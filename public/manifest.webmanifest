@@ -1,0 +1,65 @@
+{
+  "name": "Cue & Tap — POS Billiard + Cafe",
+  "short_name": "Cue & Tap",
+  "description": "Kasir, billing sesi billiard, self-order QR, kitchen display, dan laporan shift untuk billiard hall + cafe.",
+  "id": "/",
+  "start_url": "/staff/cashier",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0b1326",
+  "theme_color": "#0b1326",
+  "lang": "id-ID",
+  "dir": "ltr",
+  "categories": ["business", "food", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Kasir — Meja",
+      "short_name": "Kasir",
+      "description": "Buka matrix meja dan bill aktif",
+      "url": "/staff/cashier",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Kitchen Display",
+      "short_name": "KDS",
+      "description": "Antrian dapur & bar",
+      "url": "/staff/kitchen",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Admin & Shift",
+      "short_name": "Admin",
+      "description": "Balancing shift & audit log",
+      "url": "/staff/admin",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

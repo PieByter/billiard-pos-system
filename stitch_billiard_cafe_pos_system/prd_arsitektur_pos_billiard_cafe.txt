@@ -1,0 +1,8 @@
+# Arsitektur & Spesifikasi Sistem: POS Billiard + Cafe (Next.js + Supabase + Drizzle)
+
+Dokumen PRD & Rancangan Arsitektur lengkap mencakup:
+- Model Domain (Venue Tables, Bills, Billiard Sessions, Orders, Order Items, Payments)
+- Skema Drizzle ORM PostgreSQL dengan RLS deny-all untuk public client
+- Aturan Billing & Timer real-time dengan proteksi clock-skew & idempotency
+- Real-time Kitchen Display System (KDS), Cashier Table Matrix, dan Customer Self-Order QR Flow
+- Analisis kegagalan & mitigasi operasional (Thermal printing, QRIS webhook, shift balancing)

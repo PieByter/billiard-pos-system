@@ -1,0 +1,646 @@
+<!DOCTYPE html><html class="dark" lang="en"><head><meta charset="utf-8"><meta content="width=device-width, initial-scale=1.0" name="viewport"><meta content="web_dashboard" name="shell-type"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"><link href="https://fonts.googleapis.com" rel="preconnect"><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"tertiary-fixed-dim":"#ffb95f","secondary-container":"#03b5d3","on-secondary-fixed-variant":"#004e5c","inverse-on-surface":"#283044","error":"#ffb4ab","surface-dim":"#0b1326","tertiary-fixed":"#ffddb8","on-surface-variant":"#bbcabf","on-tertiary-container":"#523200","inverse-surface":"#dae2fd","surface-tint":"#4edea3","surface-variant":"#2d3449","surface":"#0b1326","on-secondary-fixed":"#001f26","on-tertiary-fixed":"#2a1700","on-primary-fixed-variant":"#005236","on-tertiary-fixed-variant":"#653e00","primary-fixed-dim":"#4edea3","outline-variant":"#3c4a42","on-primary-container":"#00422b","on-surface":"#dae2fd","on-primary-fixed":"#002113","on-secondary-container":"#00424e","secondary-fixed":"#acedff","tertiary":"#ffb95f","background":"#0b1326","secondary-fixed-dim":"#4cd7f6","on-background":"#dae2fd","on-secondary":"#003640","inverse-primary":"#006c49","primary-fixed":"#6ffbbe","primary":"#4edea3","surface-container-low":"#131b2e","surface-container":"#171f33","surface-container-highest":"#2d3449","surface-container-lowest":"#060e20","tertiary-container":"#e29100","on-primary":"#003824","on-error":"#690005","outline":"#86948a","surface-bright":"#31394d","error-container":"#93000a","on-error-container":"#ffdad6","surface-container-high":"#222a3d","secondary":"#4cd7f6","primary-container":"#10b981","on-tertiary":"#472a00"},borderRadius:{DEFAULT:"0.125rem",lg:"0.25rem",xl:"0.5rem",full:"0.75rem"},spacing:{"space-xs":"0.25rem","gutter-tablet":"1.25rem","gutter-desktop":"1.5rem","space-md":"1rem","space-sm":"0.5rem",gutter:"1rem","margin-tablet":"1.5rem",margin:"1rem","space-lg":"1.5rem","margin-desktop":"2rem","space-xl":"2.5rem"},fontFamily:{"headline-lg-mobile":["Plus Jakarta Sans"],"label-numeric-lg":["JetBrains Mono"],"headline-lg":["Plus Jakarta Sans"],"label-numeric-md":["JetBrains Mono"],"headline-xl":["Plus Jakarta Sans"],"body-md":["Plus Jakarta Sans"],"body-lg":["Plus Jakarta Sans"],"headline-xl-mobile":["Plus Jakarta Sans"],"headline-md":["Plus Jakarta Sans"],"label-numeric-sm":["JetBrains Mono"],"label-badge":["Plus Jakarta Sans"],"body-sm":["Plus Jakarta Sans"]},fontSize:{"headline-lg-mobile":["24px",{lineHeight:"32px",letterSpacing:"-0.01em",fontWeight:"700"}],"label-numeric-lg":["28px",{lineHeight:"32px",letterSpacing:"-0.02em",fontWeight:"700"}],"headline-lg":["32px",{lineHeight:"40px",letterSpacing:"-0.02em",fontWeight:"700"}],"label-numeric-md":["18px",{lineHeight:"24px",letterSpacing:"-0.01em",fontWeight:"600"}],"headline-xl":["40px",{lineHeight:"48px",letterSpacing:"-0.03em",fontWeight:"800"}],"body-md":["14px",{lineHeight:"20px",letterSpacing:"0em",fontWeight:"400"}],"body-lg":["16px",{lineHeight:"24px",letterSpacing:"0em",fontWeight:"500"}],"headline-xl-mobile":["30px",{lineHeight:"38px",letterSpacing:"-0.02em",fontWeight:"800"}],"headline-md":["22px",{lineHeight:"28px",letterSpacing:"-0.01em",fontWeight:"700"}],"label-numeric-sm":["13px",{lineHeight:"16px",letterSpacing:"0.02em",fontWeight:"500"}],"label-badge":["11px",{lineHeight:"14px",letterSpacing:"0.06em",fontWeight:"700"}],"body-sm":["12px",{lineHeight:"18px",letterSpacing:"0.01em",fontWeight:"400"}]}}}};</script><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet"><style>html, body { font-family: 'Inter', system-ui, -apple-system, sans-serif; } h1, h2, h3, h4, .font-headline-md, .font-headline-lg, .font-headline-xl { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; } .font-label-numeric-lg, .font-label-numeric-md, .font-label-numeric-sm { font-family: 'JetBrains Mono', monospace; }</style></head><body class="bg-surface text-on-surface font-body-md text-body-md antialiased selection:bg-primary-container selection:text-on-primary-container" style="font-family: Inter, system-ui, -apple-system, sans-serif;"><header class="fixed top-0 left-0 right-0 z-50 h-16 bg-surface-container-lowest/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.35)] flex items-center justify-between px-gutter-desktop"><div class="flex items-center gap-space-lg"><div class="flex items-center gap-space-sm"><img alt="Cue &amp; Tap Emblem" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/ALJJyrAnBZI5M0_dNZhQ6MQR24s4GDNw7sA4CVp5tchrZ3n1WfRBu5a7E1zA1L_l-rHfKwMz145QY7NXVI-w8tcsME4nhLHVyTFk4Gyb6Chi9Y-ftor8wUmE1V41RnKu_lOhsSezdmSkGCr9dXsdzUW0Gtm8txnL5krvZ-AUFcwZsacsF4AQQgIfbZ_6UjdMHSeOTpHWKnzAVWmkVUDP-hQmuscTVKIcHdl3oGwyWi4pyNLS"><div class="flex flex-col"><span class="font-headline-md text-headline-md font-bold tracking-tight text-primary leading-none">CUE &amp; TAP POS</span><span class="font-label-badge text-label-badge text-on-surface-variant uppercase tracking-wider">Billiard &amp; Lounge OS</span></div></div><div class="h-6 w-[1px] bg-surface-container-highest"></div><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-xs font-label-numeric-md text-label-numeric-md text-on-surface"><span class="material-symbols-outlined text-secondary text-[20px]">schedule</span><span id="system-clock">21:42:08</span></div><div class="flex items-center gap-space-xs px-space-sm py-0.5 rounded-full bg-surface-container"><div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div><span class="font-label-badge text-label-badge text-primary uppercase">Online</span></div></div></div><nav class="hidden xl:flex items-center gap-space-xs p-1 rounded-xl bg-surface-container-low" data-active-classes="bg-primary-container text-on-primary-container font-bold rounded-lg shadow-[0_0_16px_-2px_rgba(16,185,129,0.3)]"><a class="px-space-md py-space-xs text-on-surface-variant hover:text-on-surface transition-colors font-body-sm text-body-sm" data-path="kasir-meja" href="#">Kasir &amp; Meja (Cashier Matrix)</a><a class="px-space-md py-space-xs text-on-surface-variant hover:text-on-surface transition-colors font-body-sm text-body-sm" data-path="kitchen-kds" href="#">Kitchen KDS</a><a class="px-space-md py-space-xs text-on-surface-variant hover:text-on-surface transition-colors font-body-sm text-body-sm" data-path="customer-self-order" href="#">Customer Self-Order (Preview)</a><a class="px-space-md py-space-xs text-on-surface-variant hover:text-on-surface transition-colors font-body-sm text-body-sm" data-path="admin-laporan-shift" href="#">Admin &amp; Laporan Shift</a></nav><div class="flex items-center gap-space-md"><div class="hidden md:flex items-center gap-space-xs px-space-md py-1.5 rounded-xl bg-surface-container"><span class="material-symbols-outlined text-tertiary text-[20px]">payments</span><div class="flex flex-col text-right"><span class="font-label-badge text-label-badge text-on-surface-variant uppercase">Laci Kasir</span><span class="font-label-numeric-sm text-label-numeric-sm text-tertiary-fixed font-semibold">Rp 2.450.000</span></div></div><div class="flex items-center gap-space-sm pl-space-xs"><div class="flex flex-col items-end"><span class="font-body-sm text-body-sm font-semibold text-on-surface leading-tight">Budi Santoso</span><span class="font-label-badge text-label-badge text-secondary font-medium">Shift Pagi</span></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_0_12px_rgba(78,222,163,0.3)]"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><aside class="fixed left-0 top-16 bottom-0 w-64 bg-surface-container-lowest z-40 flex flex-col justify-between py-space-md shadow-[1px_0_12px_rgba(0,0,0,0.2)]"><div class="flex flex-col gap-space-xs px-space-sm"><div class="px-space-sm py-space-xs"><span class="font-label-badge text-label-badge uppercase tracking-wider text-outline">Sesi Operasional</span></div><nav class="flex flex-col gap-1" data-active-classes="bg-surface-container-high text-primary font-bold rounded-lg"><a class="flex items-center gap-space-sm px-space-md py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="kasir-meja" href="#"><span class="material-symbols-outlined text-[20px]">sports_score</span><span>Matrix Meja Billiard</span></a><a class="flex items-center gap-space-sm px-space-md py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="cafe-pos-cart" href="#"><span class="material-symbols-outlined text-[20px]">point_of_sale</span><span>POS F&amp;B Cafe</span></a><a class="flex items-center gap-space-sm px-space-md py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="kitchen-kds" href="#"><span class="material-symbols-outlined text-[20px]">soup_kitchen</span><span>Antrean KDS</span></a><a class="flex items-center gap-space-sm px-space-md py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="customer-self-order" href="#"><span class="material-symbols-outlined text-[20px]">qr_code_scanner</span><span>Kios Self-Order</span></a></nav><div class="my-space-xs h-[1px] bg-surface-container"></div><div class="px-space-sm py-space-xs"><span class="font-label-badge text-label-badge uppercase tracking-wider text-outline">Manajemen</span></div><nav class="flex flex-col gap-1" data-active-classes="bg-surface-container-high text-primary font-bold rounded-lg"><a class="flex items-center gap-space-sm px-space-md py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="admin-laporan-shift" href="#"><span class="material-symbols-outlined text-[20px]">receipt_long</span><span>Laporan &amp; Tutup Kas</span></a><a class="flex items-center gap-space-sm px-space-md py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-all" data-path="inventaris-stok" href="#"><span class="material-symbols-outlined text-[20px]">inventory_2</span><span>Stok Resto &amp; Cues</span></a></nav></div><div class="px-space-md flex flex-col gap-space-sm"><div class="p-space-sm rounded-lg bg-surface-container-low flex items-center justify-between"><div class="flex flex-col"><span class="font-label-badge text-label-badge text-outline uppercase">Tarif Malam</span><span class="font-label-numeric-sm text-label-numeric-sm text-primary">Active: IDR 50k/jam</span></div><span class="material-symbols-outlined text-secondary text-[20px]">bolt</span></div><button class="flex items-center justify-center gap-space-xs w-full py-2 rounded-lg bg-error-container text-on-error-container hover:bg-error hover:text-on-error transition-colors font-body-sm text-body-sm font-semibold"><span class="material-symbols-outlined text-[18px]">lock_clock</span><span>Selesai Shift</span></button></div></aside><div class="pl-64"><main class="relative w-full pt-16 bg-surface min-h-screen px-gutter-desktop py-space-lg"><div class="flex flex-col w-full gap-space-lg">
+<!-- Operational Metrics Strip -->
+<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-space-md">
+<!-- Billiard Capacity Widget -->
+<div class="relative overflow-hidden rounded-xl bg-surface-container-low p-space-md shadow-md">
+<div class="absolute -right-4 -bottom-4 w-24 h-24 bg-primary/5 rounded-full pointer-events-none"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-badge text-label-badge uppercase tracking-wider text-on-surface-variant">Meja Billiard (8 Total)</span>
+<span class="material-symbols-outlined text-primary text-[20px]">content_copy</span>
+</div>
+<div class="mt-space-sm flex items-baseline gap-space-sm">
+<span class="font-label-numeric-lg text-label-numeric-lg text-on-surface font-bold">5</span>
+<span class="font-body-sm text-body-sm text-primary font-semibold">Aktif Running</span>
+<span class="text-on-surface-variant font-body-sm text-body-sm">/ 1 Paused / 2 Ready</span>
+</div>
+<div class="mt-space-sm flex gap-1 w-full h-1.5 rounded-full overflow-hidden bg-surface-container-highest">
+<div class="h-full bg-primary" style="width: 62.5%"></div>
+<div class="h-full bg-tertiary" style="width: 12.5%"></div>
+<div class="h-full bg-outline-variant" style="width: 25%"></div>
+</div>
+</div>
+<!-- Cafe Capacity Widget -->
+<div class="relative overflow-hidden rounded-xl bg-surface-container-low p-space-md shadow-md">
+<div class="absolute -right-4 -bottom-4 w-24 h-24 bg-secondary/5 rounded-full pointer-events-none"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-badge text-label-badge uppercase tracking-wider text-on-surface-variant">Meja Cafe &amp; Lounge</span>
+<span class="material-symbols-outlined text-secondary text-[20px]">table_bar</span>
+</div>
+<div class="mt-space-sm flex items-baseline gap-space-sm">
+<span class="font-label-numeric-lg text-label-numeric-lg text-on-surface font-bold">7</span>
+<span class="font-body-sm text-body-sm text-secondary font-semibold">Terisi</span>
+<span class="text-on-surface-variant font-body-sm text-body-sm">/ 12 Kapasitas Meja</span>
+</div>
+<div class="mt-space-sm flex gap-1 w-full h-1.5 rounded-full overflow-hidden bg-surface-container-highest">
+<div class="h-full bg-secondary" style="width: 58%"></div>
+<div class="h-full bg-outline-variant" style="width: 42%"></div>
+</div>
+</div>
+<!-- Open Billing Snapshot -->
+<div class="relative overflow-hidden rounded-xl bg-surface-container-low p-space-md shadow-md">
+<div class="absolute -right-4 -bottom-4 w-24 h-24 bg-tertiary-fixed-dim/5 rounded-full pointer-events-none"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-badge text-label-badge uppercase tracking-wider text-on-surface-variant">Total Open Bills</span>
+<span class="material-symbols-outlined text-tertiary text-[20px]">receipt_long</span>
+</div>
+<div class="mt-space-sm flex items-baseline gap-space-xs">
+<span class="font-label-numeric-lg text-label-numeric-lg text-tertiary font-bold tracking-tight">Rp 3.420.000</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">12 Transaksi aktif belum close-bill</p>
+</div>
+<!-- Action Needed Self Orders -->
+<div class="relative overflow-hidden rounded-xl bg-surface-container-low p-space-md shadow-md">
+<div class="absolute -right-4 -bottom-4 w-24 h-24 bg-error/10 rounded-full pointer-events-none"></div>
+<div class="flex items-center justify-between">
+<span class="font-label-badge text-label-badge uppercase tracking-wider text-on-surface-variant">Pending Self-Orders</span>
+<span class="px-space-xs py-0.5 rounded-full bg-error-container text-on-error-container font-label-badge text-label-badge">Perlu Aksi</span>
+</div>
+<div class="mt-space-sm flex items-baseline gap-space-sm">
+<span class="font-label-numeric-lg text-label-numeric-lg text-error font-bold">3</span>
+<span class="font-body-sm text-body-sm text-on-surface">Pesanan QR Menunggu Approval</span>
+</div>
+<div class="mt-1 flex items-center gap-space-xs text-error font-label-badge text-label-badge">
+<span class="material-symbols-outlined text-[14px]">warning</span>
+<span>Meja B1, C3, C5 memerlukan verifikasi</span>
+</div>
+</div>
+</section>
+<!-- Filter & Matrix Control Ribbon -->
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md pb-space-xs">
+<div class="flex items-center gap-space-xs p-1 rounded-xl bg-surface-container-low overflow-x-auto">
+<button class="px-space-md py-1.5 rounded-lg bg-surface-container-high text-primary font-body-sm text-body-sm font-bold shadow-sm whitespace-nowrap">Semua Meja (20)</button>
+<button class="px-space-md py-1.5 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container font-body-sm text-body-sm transition-colors whitespace-nowrap">Billiard (B1-B8)</button>
+<button class="px-space-md py-1.5 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container font-body-sm text-body-sm transition-colors whitespace-nowrap">Cafe &amp; Lounge (C1-C12)</button>
+<button class="px-space-md py-1.5 rounded-lg text-tertiary hover:bg-surface-container font-body-sm text-body-sm flex items-center gap-1 transition-colors whitespace-nowrap">
+<span>Perlu Perhatian</span>
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+</button>
+</div>
+<div class="flex items-center gap-space-sm">
+<div class="flex items-center gap-space-xs bg-surface-container-low rounded-xl px-space-md py-1.5">
+<span class="material-symbols-outlined text-outline text-[18px]">search</span>
+<input class="bg-transparent font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none w-48 md:w-60" placeholder="Cari nomor meja, guest, tag..." type="text">
+</div>
+<button class="flex items-center gap-space-xs px-space-md py-2 rounded-xl bg-primary-container text-on-primary-container font-body-sm text-body-sm font-bold shadow-md hover:bg-primary transition-all">
+<span class="material-symbols-outlined text-[18px]">add_circle</span>
+<span>Buka Sesi Meja</span>
+</button>
+</div>
+</div>
+<!-- Primary Operations Split: Matrix Grid (Left 8 Cols) + Active Bill Panel (Right 4 Cols) -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-lg items-start">
+<!-- LEFT PANEL: TABLE CARDS MATRIX (8 COLS) -->
+<div class="xl:col-span-8 flex flex-col gap-space-lg">
+<!-- Sub-section: Billiard Tables Section -->
+<div class="flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<span class="font-headline-md text-headline-md text-on-surface font-bold tracking-tight">Arena Meja Billiard</span>
+<span class="font-label-badge text-label-badge px-space-sm py-0.5 rounded bg-surface-container-highest text-secondary uppercase">8 Tables Loaded</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Klik kartu untuk inspeksi &amp; penagihan</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-md">
+<!-- TABLE B1 (VIP 9ft - RUNNING - ACTIVE SELECTION) -->
+<div class="relative rounded-xl bg-surface-container p-space-md shadow-[0_0_24px_-4px_rgba(16,185,129,0.3)] ring-2 ring-primary flex flex-col justify-between gap-space-md cursor-pointer transition-transform hover:-translate-y-0.5">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-numeric-lg text-label-numeric-lg font-bold text-on-surface">B1</span>
+<span class="font-label-badge text-label-badge px-space-xs py-0.5 rounded bg-surface-container-highest text-primary font-bold">VIP 9FT</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface font-semibold mt-0.5">Kevin Sanjaya (Tab #18)</p>
+<span class="font-label-badge text-label-badge text-outline uppercase">Tarif: Rp 60k/jam</span>
+</div>
+<div class="flex flex-col items-end">
+<span class="px-space-xs py-0.5 rounded bg-primary/20 text-primary font-label-badge text-label-badge uppercase tracking-wider flex items-center gap-1 font-bold">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+                  RUNNING
+                </span>
+<span class="font-label-numeric-md text-label-numeric-md text-primary font-bold mt-1">01:47:23</span>
+</div>
+</div>
+<!-- Financial breakdown for card -->
+<div class="bg-surface-container-lowest/80 rounded-lg p-space-sm flex flex-col gap-1">
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant">Durasi Billiard (102m):</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface">Rp 105.000</span>
+</div>
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant">F&amp;B Pesanan (4 items):</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface">Rp 140.000</span>
+</div>
+<div class="flex items-center justify-between pt-1 border-t border-surface-container-high font-body-sm text-body-sm font-semibold">
+<span class="text-primary">Snapshot Bill:</span>
+<span class="font-label-numeric-md text-label-numeric-md text-primary font-bold">Rp 245.000</span>
+</div>
+</div>
+<!-- Fast Action Matrix Buttons -->
+<div class="grid grid-cols-2 gap-space-xs pt-space-xs">
+<button class="py-2 px-space-xs rounded-lg bg-surface-container-high hover:bg-surface-bright text-on-surface font-body-sm text-body-sm font-medium flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[16px] text-tertiary">pause</span>
+<span>Pause</span>
+</button>
+<button class="py-2 px-space-xs rounded-lg bg-primary text-on-primary font-body-sm text-body-sm font-bold flex items-center justify-center gap-1 shadow-sm hover:brightness-110 transition-all">
+<span class="material-symbols-outlined text-[16px]">point_of_sale</span>
+<span>Stop &amp; Bayar</span>
+</button>
+<button class="py-1.5 px-space-xs rounded-lg bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant font-body-sm text-body-sm flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[16px] text-secondary">restaurant</span>
+<span>+ F&amp;B Order</span>
+</button>
+<button class="py-1.5 px-space-xs rounded-lg bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant font-body-sm text-body-sm flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[16px]">swap_horiz</span>
+<span>Pindah Meja</span>
+</button>
+</div>
+</div>
+<!-- TABLE B2 (Standard - RUNNING) -->
+<div class="rounded-xl bg-surface-container p-space-md shadow-md flex flex-col justify-between gap-space-md hover:bg-surface-container-high/80 transition-all">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-numeric-lg text-label-numeric-lg font-bold text-on-surface">B2</span>
+<span class="font-label-badge text-label-badge px-space-xs py-0.5 rounded bg-surface-container-highest text-on-surface-variant font-semibold">Standard 9ft</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface font-semibold mt-0.5">Adrian / Walk-in Open</p>
+<span class="font-label-badge text-label-badge text-outline uppercase">Tarif: Rp 50k/jam</span>
+</div>
+<div class="flex flex-col items-end">
+<span class="px-space-xs py-0.5 rounded bg-primary/20 text-primary font-label-badge text-label-badge uppercase tracking-wider flex items-center gap-1 font-bold">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                  RUNNING
+                </span>
+<span class="font-label-numeric-md text-label-numeric-md text-primary font-bold mt-1">00:35:10</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest/80 rounded-lg p-space-sm flex flex-col gap-1">
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant">Billiard (35m):</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface">Rp 30.000</span>
+</div>
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant">F&amp;B Ready (2 item):</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-secondary font-medium">Rp 15.000</span>
+</div>
+<div class="flex items-center justify-between pt-1 font-body-sm text-body-sm font-semibold">
+<span class="text-on-surface">Total Berjalan:</span>
+<span class="font-label-numeric-md text-label-numeric-md text-primary font-bold">Rp 45.000</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-space-xs pt-space-xs">
+<button class="py-2 px-space-xs rounded-lg bg-surface-container-low hover:bg-surface-bright text-on-surface font-body-sm text-body-sm flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-tertiary">pause</span>
+<span>Pause</span>
+</button>
+<button class="py-2 px-space-xs rounded-lg bg-surface-container-highest hover:bg-primary hover:text-on-primary text-on-surface font-body-sm text-body-sm font-semibold flex items-center justify-center gap-1 transition-all">
+<span class="material-symbols-outlined text-[16px]">point_of_sale</span>
+<span>Detail Bill</span>
+</button>
+</div>
+</div>
+<!-- TABLE B3 (Standard - PAUSED / ORANGE BADGE) -->
+<div class="rounded-xl bg-surface-container p-space-md shadow-[0_0_18px_-4px_rgba(255,185,95,0.25)] flex flex-col justify-between gap-space-md">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-numeric-lg text-label-numeric-lg font-bold text-on-surface">B3</span>
+<span class="font-label-badge text-label-badge px-space-xs py-0.5 rounded bg-surface-container-highest text-tertiary font-bold">Standard</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface font-semibold mt-0.5">Rangga &amp; Rekan</p>
+<span class="font-label-badge text-label-badge text-tertiary-fixed-dim">Alasan: Tunggu Pemain</span>
+</div>
+<div class="flex flex-col items-end">
+<span class="px-space-xs py-0.5 rounded bg-tertiary/20 text-tertiary font-label-badge text-label-badge uppercase tracking-wider flex items-center gap-1 font-bold">
+<span class="material-symbols-outlined text-[12px]">pause</span>
+                  PAUSED
+                </span>
+<span class="font-label-numeric-md text-label-numeric-md text-tertiary font-bold mt-1">02:15:00</span>
+<span class="font-body-sm text-body-sm text-outline">(Hold 12m)</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest/80 rounded-lg p-space-sm flex flex-col gap-1">
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant">Billiard Session:</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface">Rp 112.500</span>
+</div>
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant">Cafe Bill:</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface">Rp 22.500</span>
+</div>
+<div class="flex items-center justify-between pt-1 font-body-sm text-body-sm font-semibold">
+<span class="text-tertiary">Total Frozen:</span>
+<span class="font-label-numeric-md text-label-numeric-md text-tertiary font-bold">Rp 135.000</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-space-xs pt-space-xs">
+<button class="py-2 px-space-xs rounded-lg bg-tertiary-container text-on-tertiary-container hover:bg-tertiary font-body-sm text-body-sm font-bold flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[16px]">play_arrow</span>
+<span>Resume Sesi</span>
+</button>
+<button class="py-2 px-space-xs rounded-lg bg-surface-container-highest hover:bg-error hover:text-on-error text-on-surface font-body-sm text-body-sm font-semibold flex items-center justify-center gap-1 transition-all">
+<span class="material-symbols-outlined text-[16px]">done_all</span>
+<span>Checkout</span>
+</button>
+</div>
+</div>
+<!-- TABLE B4 (Standard - AVAILABLE / READY) -->
+<div class="rounded-xl bg-surface-container-low p-space-md flex flex-col justify-between gap-space-md opacity-90 hover:opacity-100 transition-opacity">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-numeric-lg text-label-numeric-lg font-bold text-outline">B4</span>
+<span class="font-label-badge text-label-badge px-space-xs py-0.5 rounded bg-surface-container text-outline">Standard 9ft</span>
+</div>
+<p class="font-body-sm text-body-sm text-outline mt-0.5">Meja Kosong / Siap Pakai</p>
+<span class="font-label-badge text-label-badge text-outline uppercase">Lampu: Mati Otomatis</span>
+</div>
+<span class="px-space-xs py-0.5 rounded bg-surface-container-highest text-outline font-label-badge text-label-badge uppercase tracking-wider font-semibold">
+                AVAILABLE
+              </span>
+</div>
+<div class="h-20 rounded-lg bg-surface-container-lowest/50 flex flex-col items-center justify-center gap-1 text-center p-space-sm">
+<span class="material-symbols-outlined text-outline text-[24px]">lock_clock</span>
+<span class="font-body-sm text-body-sm text-outline">Pilih Open Billing atau Durasi Paket</span>
+</div>
+<button class="w-full py-2.5 rounded-lg bg-primary-container text-on-primary-container hover:bg-primary font-body-sm text-body-sm font-bold flex items-center justify-center gap-1 shadow-md transition-all">
+<span class="material-symbols-outlined text-[18px]">play_arrow</span>
+<span>Start Sesi Billiard</span>
+</button>
+</div>
+<!-- TABLE B5 (Standard - DIRTY / NEEDS CLEANING) -->
+<div class="rounded-xl bg-surface-container-low p-space-md flex flex-col justify-between gap-space-md">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-numeric-lg text-label-numeric-lg font-bold text-on-surface">B5</span>
+<span class="font-label-badge text-label-badge px-space-xs py-0.5 rounded bg-surface-container text-outline">Standard</span>
+</div>
+<p class="font-body-sm text-body-sm text-error font-medium mt-0.5">Turnover Selesai</p>
+<span class="font-label-badge text-label-badge text-outline">Baru Selesai 3 menit lalu</span>
+</div>
+<span class="px-space-xs py-0.5 rounded bg-error-container text-on-error-container font-label-badge text-label-badge uppercase tracking-wider flex items-center gap-1 font-bold">
+<span class="material-symbols-outlined text-[12px]">cleaning_services</span>
+                CLEANING
+              </span>
+</div>
+<div class="bg-surface-container-lowest/70 rounded-lg p-space-sm flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-tertiary text-[24px]">mop</span>
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm font-bold text-on-surface">Menunggu Pembersihan</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Sikat laken &amp; racking bola 15</span>
+</div>
+</div>
+<button class="w-full py-2 rounded-lg bg-surface-container-high hover:bg-surface-bright text-on-surface font-body-sm text-body-sm font-semibold flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[16px] text-primary">check_circle</span>
+<span>Tandai Siap Pakai</span>
+</button>
+</div>
+<!-- TABLE B6 (VIP - AVAILABLE) -->
+<div class="rounded-xl bg-surface-container-low p-space-md flex flex-col justify-between gap-space-md opacity-90 hover:opacity-100 transition-opacity">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-numeric-lg text-label-numeric-lg font-bold text-outline">B6</span>
+<span class="font-label-badge text-label-badge px-space-xs py-0.5 rounded bg-surface-container text-primary font-bold">VIP Room 2</span>
+</div>
+<p class="font-body-sm text-body-sm text-outline mt-0.5">Meja Kosong / Siap Pakai</p>
+<span class="font-label-badge text-label-badge text-outline uppercase">Tarif: Rp 75k/jam</span>
+</div>
+<span class="px-space-xs py-0.5 rounded bg-surface-container-highest text-outline font-label-badge text-label-badge uppercase tracking-wider font-semibold">
+                AVAILABLE
+              </span>
+</div>
+<div class="h-20 rounded-lg bg-surface-container-lowest/50 flex flex-col items-center justify-center gap-1 text-center p-space-sm">
+<span class="material-symbols-outlined text-outline text-[24px]">meeting_room</span>
+<span class="font-body-sm text-body-sm text-outline">Termasuk sofa VIP &amp; Private Bar</span>
+</div>
+<button class="w-full py-2.5 rounded-lg bg-primary-container text-on-primary-container hover:bg-primary font-body-sm text-body-sm font-bold flex items-center justify-center gap-1 shadow-md transition-all">
+<span class="material-symbols-outlined text-[18px]">play_arrow</span>
+<span>Start VIP Sesi</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Sub-section: Cafe & Lounge Tables Matrix -->
+<div class="flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<span class="font-headline-md text-headline-md text-on-surface font-bold tracking-tight">Meja F&amp;B Cafe &amp; Lounge</span>
+<span class="font-label-badge text-label-badge px-space-sm py-0.5 rounded bg-surface-container-highest text-secondary uppercase">12 Tables</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Live Kitchen &amp; QR Status</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-md">
+<!-- CAFE C1 (Active - Kitchen Cooking) -->
+<div class="rounded-xl bg-surface-container p-space-md flex flex-col justify-between gap-space-md">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-numeric-lg text-label-numeric-lg font-bold text-on-surface">C1</span>
+<span class="font-label-badge text-label-badge px-space-xs py-0.5 rounded bg-surface-container-highest text-secondary font-semibold">Indoor Sofa</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface font-medium mt-0.5">Bill #CAF-902 (Dine In)</p>
+</div>
+<span class="px-space-xs py-0.5 rounded bg-secondary-container/20 text-secondary font-label-badge text-label-badge uppercase tracking-wider flex items-center gap-1 font-bold">
+<span class="material-symbols-outlined text-[12px]">skillet</span>
+                COOKING
+              </span>
+</div>
+<div class="bg-surface-container-lowest/80 rounded-lg p-space-sm flex flex-col gap-1">
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant">Item Pesanan:</span>
+<span class="text-on-surface font-medium">3 F&amp;B Items</span>
+</div>
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant">Status Antrean:</span>
+<span class="text-secondary font-body-sm text-body-sm font-semibold">Kitchen Station #2</span>
+</div>
+<div class="flex items-center justify-between pt-1 font-body-sm text-body-sm font-semibold">
+<span class="text-on-surface">Total Bill:</span>
+<span class="font-label-numeric-md text-label-numeric-md text-on-surface font-bold">Rp 165.000</span>
+</div>
+</div>
+<div class="flex items-center gap-space-xs">
+<button class="flex-1 py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-on-surface font-body-sm text-body-sm flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[16px]">receipt</span>
+<span>Slip Order</span>
+</button>
+<button class="flex-1 py-1.5 rounded-lg bg-surface-container-highest hover:bg-primary hover:text-on-primary text-on-surface font-body-sm text-body-sm font-semibold transition-all">
+<span>Bayar</span>
+</button>
+</div>
+</div>
+<!-- CAFE C2 (Active - Served / Ready for Bill) -->
+<div class="rounded-xl bg-surface-container p-space-md flex flex-col justify-between gap-space-md">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-numeric-lg text-label-numeric-lg font-bold text-on-surface">C2</span>
+<span class="font-label-badge text-label-badge px-space-xs py-0.5 rounded bg-surface-container-highest text-on-surface-variant font-semibold">Bar Stool</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface font-medium mt-0.5">Dimas Satria</p>
+</div>
+<span class="px-space-xs py-0.5 rounded bg-primary/20 text-primary font-label-badge text-label-badge uppercase tracking-wider flex items-center gap-1 font-bold">
+<span class="material-symbols-outlined text-[12px]">done</span>
+                SERVED
+              </span>
+</div>
+<div class="bg-surface-container-lowest/80 rounded-lg p-space-sm flex flex-col gap-1">
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant">Item Pesanan:</span>
+<span class="text-on-surface font-medium">1x Craft Beer, 1x Nachos</span>
+</div>
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant">Durasi di Meja:</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface-variant">42 Menit</span>
+</div>
+<div class="flex items-center justify-between pt-1 font-body-sm text-body-sm font-semibold">
+<span class="text-on-surface">Total Bill:</span>
+<span class="font-label-numeric-md text-label-numeric-md text-primary font-bold">Rp 120.000</span>
+</div>
+</div>
+<div class="flex items-center gap-space-xs">
+<button class="flex-1 py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-on-surface font-body-sm text-body-sm flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[16px]">add</span>
+<span>Tambah</span>
+</button>
+<button class="flex-1 py-1.5 rounded-lg bg-primary text-on-primary font-body-sm text-body-sm font-bold flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[16px]">payments</span>
+<span>Checkout</span>
+</button>
+</div>
+</div>
+<!-- CAFE C3 (Attention - Pending Self-Order QR) -->
+<div class="rounded-xl bg-surface-container p-space-md shadow-[0_0_18px_-4px_rgba(255,180,171,0.25)] ring-1 ring-error/50 flex flex-col justify-between gap-space-md">
+<div class="flex items-start justify-between">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-numeric-lg text-label-numeric-lg font-bold text-on-surface">C3</span>
+<span class="font-label-badge text-label-badge px-space-xs py-0.5 rounded bg-surface-container-highest text-error font-bold">VIP Balcony</span>
+</div>
+<p class="font-body-sm text-body-sm text-error font-medium mt-0.5">Guest Order #ORD-892</p>
+</div>
+<span class="px-space-xs py-0.5 rounded bg-error-container text-on-error-container font-label-badge text-label-badge uppercase tracking-wider flex items-center gap-1 font-bold animate-pulse">
+<span class="material-symbols-outlined text-[12px]">notifications_active</span>
+                QR ORDER
+              </span>
+</div>
+<div class="bg-surface-container-lowest/80 rounded-lg p-space-sm flex flex-col gap-1">
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant">Self-Order Baru:</span>
+<span class="text-error font-semibold">2 Items Pending</span>
+</div>
+<div class="text-on-surface-variant font-body-sm text-body-sm italic">
+                "Chicken Wings Spicy &amp; Americano"
+              </div>
+<div class="flex items-center justify-between pt-1 font-body-sm text-body-sm font-semibold">
+<span class="text-on-surface">Est. Total:</span>
+<span class="font-label-numeric-md text-label-numeric-md text-on-surface font-bold">Rp 88.000</span>
+</div>
+</div>
+<div class="flex items-center gap-space-xs">
+<button class="flex-1 py-1.5 rounded-lg bg-primary-container text-on-primary-container hover:bg-primary font-body-sm text-body-sm font-bold flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[16px]">check</span>
+<span>Approve</span>
+</button>
+<button class="px-space-sm py-1.5 rounded-lg bg-surface-container-highest hover:bg-error-container text-on-surface-variant hover:text-on-error-container font-body-sm text-body-sm transition-colors">
+<span class="material-symbols-outlined text-[16px]">close</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- RIGHT PANEL: ACTIVE BILL DETAIL PANEL (SELECTED TABLE B1) (4 COLS) -->
+<div class="xl:col-span-4 rounded-2xl bg-surface-container-low shadow-xl p-space-md flex flex-col gap-space-md sticky top-20">
+<!-- Panel Header with Bill Meta -->
+<div class="flex items-start justify-between pb-space-sm border-b border-surface-container-highest">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="font-label-badge text-label-badge uppercase tracking-wider text-primary font-bold">Terminal Kasir</span>
+<span class="px-space-xs py-0.5 rounded-full bg-primary/20 text-primary font-label-badge text-label-badge">Live Active</span>
+</div>
+<span class="font-headline-md text-headline-md text-on-surface font-bold tracking-tight mt-1 block">Meja B1 (VIP 9ft)</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface-variant">Bill #BLL-20250524-0018</span>
+</div>
+<button class="p-space-xs rounded-lg bg-surface-container hover:bg-surface-container-highest text-on-surface-variant transition-colors" title="Cetak Ringkasan Sementara">
+<span class="material-symbols-outlined text-[20px]">print</span>
+</button>
+</div>
+<!-- Customer & Session Info Chip -->
+<div class="rounded-xl bg-surface-container p-space-sm flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="w-9 h-9 rounded-full bg-secondary-container/20 text-secondary flex items-center justify-center font-bold font-body-sm text-body-sm">
+            KS
+          </div>
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm font-bold text-on-surface">Kevin Sanjaya</span>
+<span class="font-label-badge text-label-badge text-on-surface-variant">Mulai: 14:10 WIB (102 Menit)</span>
+</div>
+</div>
+<div class="text-right">
+<span class="font-label-badge text-label-badge text-outline block uppercase">Paket</span>
+<span class="font-body-sm text-body-sm font-semibold text-primary">Open Billing</span>
+</div>
+</div>
+<!-- Bill Line Items (Integrated Billiard + F&B Orders) -->
+<div class="flex flex-col gap-space-sm max-h-[380px] overflow-y-auto pr-1">
+<div class="flex items-center justify-between">
+<span class="font-label-badge text-label-badge uppercase tracking-wider text-outline">Rincian Item Gabungan</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface-variant">3 Kategori Sesi</span>
+</div>
+<!-- Line Item 1: Billiard Rental Time -->
+<div class="rounded-lg bg-surface-container p-space-sm flex flex-col gap-1 border-l-2 border-primary">
+<div class="flex items-start justify-between">
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm font-bold text-on-surface">Sesi Billiard VIP 9ft</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Tarif: Rp 60.000 / jam (102 mnt terhitung)</span>
+</div>
+<span class="font-label-numeric-sm text-label-numeric-sm text-primary font-bold">Rp 105.000</span>
+</div>
+<div class="flex items-center justify-between text-outline font-label-badge text-label-badge pt-1">
+<span>Timer: 01:42:18</span>
+<span class="text-primary font-medium">Billiard Engine Running</span>
+</div>
+</div>
+<!-- Line Item 2: Cashier Entered Cafe Orders -->
+<div class="rounded-lg bg-surface-container p-space-sm flex flex-col gap-space-xs border-l-2 border-secondary">
+<div class="flex items-center justify-between">
+<span class="font-label-badge text-label-badge uppercase tracking-wider text-secondary font-bold">Order #ORD-881 (Kasir Direct)</span>
+<span class="px-space-xs py-0.5 rounded bg-surface-container-highest text-secondary font-label-badge text-label-badge">Served</span>
+</div>
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface">2x Ice Lychee Tea Lounge</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface font-semibold">Rp 50.000</span>
+</div>
+<div class="text-on-surface-variant font-body-sm text-body-sm pl-2">
+            - Extra mint, Less sugar
+          </div>
+</div>
+<!-- Line Item 3: Customer QR Self-Order (Pending Approval Alert) -->
+<div class="rounded-lg bg-surface-container p-space-sm flex flex-col gap-space-xs border-l-2 border-tertiary">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1">
+<span class="font-label-badge text-label-badge uppercase tracking-wider text-tertiary font-bold">Order #ORD-885 (QR Self-Order)</span>
+<span class="px-space-xs py-0.2 rounded bg-tertiary/20 text-tertiary font-label-badge text-label-badge">Pending</span>
+</div>
+<span class="font-label-numeric-sm text-label-numeric-sm text-tertiary font-bold">Rp 90.000</span>
+</div>
+<div class="flex items-center justify-between font-body-sm text-body-sm pt-0.5">
+<span class="text-on-surface">1x Truffle Parmesan Fries</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface">Rp 35.000</span>
+</div>
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface">1x Wagyu Fried Rice Special</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface">Rp 55.000</span>
+</div>
+<div class="text-on-surface-variant font-body-sm text-body-sm pl-2">
+            - Pedas Level 2, Telur Setengah Matang
+          </div>
+<!-- Fast Decision Buttons for pending QR order -->
+<div class="flex items-center gap-space-xs pt-space-xs">
+<button class="flex-1 py-1 rounded bg-tertiary-container hover:bg-tertiary text-on-tertiary-container font-body-sm text-body-sm font-bold flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[15px]">done</span>
+<span>Terima &amp; Kirim KDS</span>
+</button>
+<button class="px-space-sm py-1 rounded bg-surface-container-highest hover:bg-error-container text-on-surface-variant hover:text-on-error-container font-body-sm text-body-sm transition-colors">
+<span>Tolak</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Financial Calculation Summary -->
+<div class="rounded-xl bg-surface-container p-space-md flex flex-col gap-1.5">
+<div class="flex items-center justify-between font-body-sm text-body-sm text-on-surface-variant">
+<span>Subtotal Tagihan:</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface">Rp 245.000</span>
+</div>
+<div class="flex items-center justify-between font-body-sm text-body-sm text-on-surface-variant">
+<span>Pajak Resto &amp; Hiburan (PB1 10%):</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface">Rp 24.500</span>
+</div>
+<div class="flex items-center justify-between font-body-sm text-body-sm text-on-surface-variant">
+<span>Service Charge Lounge (5%):</span>
+<span class="font-label-numeric-sm text-label-numeric-sm text-on-surface">Rp 12.250</span>
+</div>
+<div class="my-1 h-[1px] bg-surface-container-highest"></div>
+<div class="flex items-baseline justify-between">
+<div class="flex flex-col">
+<span class="font-headline-md text-headline-md font-bold text-on-surface">Total Akhir</span>
+<span class="font-label-badge text-label-badge text-primary uppercase">Bill Belum Diselesaikan</span>
+</div>
+<span class="font-label-numeric-lg text-label-numeric-lg text-primary font-bold tracking-tight">Rp 281.750</span>
+</div>
+</div>
+<!-- Fast Action Settlement Grid -->
+<div class="flex flex-col gap-space-xs">
+<div class="grid grid-cols-2 gap-space-xs">
+<!-- Primary Cash Action -->
+<button class="py-3 px-space-sm rounded-xl bg-primary text-on-primary font-body-sm text-body-sm font-bold flex items-center justify-center gap-space-xs shadow-md hover:brightness-110 active:scale-[0.98] transition-all">
+<span class="material-symbols-outlined text-[18px]">payments</span>
+<span>Bayar Cash</span>
+</button>
+<!-- Primary Dynamic QRIS Action -->
+<button class="py-3 px-space-sm rounded-xl bg-secondary-container text-on-secondary-container font-body-sm text-body-sm font-bold flex items-center justify-center gap-space-xs shadow-md hover:brightness-110 active:scale-[0.98] transition-all">
+<span class="material-symbols-outlined text-[18px]">qr_code_2</span>
+<span>QRIS Dinamis</span>
+</button>
+</div>
+<div class="grid grid-cols-3 gap-space-xs">
+<!-- EDC Card Settlement -->
+<button class="py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-body-sm text-body-sm font-semibold flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[16px] text-tertiary">credit_card</span>
+<span>Debit/EDC</span>
+</button>
+<!-- Split Bill Utility -->
+<button class="py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-body-sm text-body-sm font-semibold flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[16px] text-secondary">call_split</span>
+<span>Split Bill</span>
+</button>
+<!-- Print Thermal Slip -->
+<button class="py-2 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-body-sm text-body-sm font-semibold flex items-center justify-center gap-1 transition-colors">
+<span class="material-symbols-outlined text-[16px]">receipt_long</span>
+<span>Slip 80mm</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script>
+  // Simple live timer simulation for Table B1 to demonstrate cyber-lounge kinetic feedback
+  (function() {
+    let seconds = 18;
+    let minutes = 42;
+    let hours = 1;
+
+    const timerElements = document.querySelectorAll('.font-label-numeric-md');
+    if (timerElements.length > 0) {
+      setInterval(() => {
+        seconds++;
+        if (seconds >= 60) {
+          seconds = 0;
+          minutes++;
+          if (minutes >= 60) {
+            minutes = 0;
+            hours++;
+          }
+        }
+        const formatted = 
+          String(hours).padStart(2, '0') + ':' + 
+          String(minutes).padStart(2, '0') + ':' + 
+          String(seconds).padStart(2, '0');
+        
+        // Update first timer if it matches B1
+        const b1Badge = document.querySelector('.text-primary.font-label-numeric-md');
+        if (b1Badge && b1Badge.textContent.includes(':')) {
+          b1Badge.textContent = formatted;
+        }
+      }, 1000);
+    }
+  })();
+</script></main></div>
+
+</body></html>

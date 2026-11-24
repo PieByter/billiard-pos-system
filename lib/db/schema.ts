@@ -1,0 +1,357 @@
+import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
+
+/* -------------------------------------------------------------------------- */
+/*                                   Enums                                    */
+/* -------------------------------------------------------------------------- */
+
+export const roleEnum = pgEnum('role', ['owner', 'cashier', 'kitchen']);
+export const tableKindEnum = pgEnum('table_kind', ['billiard', 'cafe']);
+export const sessionStatusEnum = pgEnum('session_status', ['running', 'paused', 'finished']);
+export const billStatusEnum = pgEnum('bill_status', ['open', 'paid', 'void']);
+export const orderSourceEnum = pgEnum('order_source', ['customer_qr', 'cashier']);
+export const orderStatusEnum = pgEnum('order_status', [
+  'pending',
+  'accepted',
+  'preparing',
+  'ready',
+  'served',
+  'cancelled',
+]);
+export const payMethodEnum = pgEnum('pay_method', ['cash', 'qris', 'transfer', 'edc']);
+export const stationEnum = pgEnum('station', ['kitchen', 'bar']);
+export const shiftStatusEnum = pgEnum('shift_status', ['open', 'closed']);
+export const serviceRequestTypeEnum = pgEnum('service_request_type', ['waiter', 'bill', 'assistance']);
+export const serviceRequestStatusEnum = pgEnum('service_request_status', ['open', 'done', 'cancelled']);
+
+/* -------------------------------------------------------------------------- */
+/*                                  Profiles                                  */
+/* -------------------------------------------------------------------------- */
+
+export const profiles = pgTable('profiles', {
+  id: uuid().primaryKey(), // = auth.users.id saat Supabase Auth aktif
+  email: text().notNull().unique(),
+  name: text().notNull(),
+  role: roleEnum().notNull(),
+  passwordHash: text(), // hanya dipakai oleh mode demo lokal
+  active: boolean().notNull().default(true),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+}).enableRLS();
+
+/* -------------------------------------------------------------------------- */
+/*                              Billiard & Meja                               */
+/* -------------------------------------------------------------------------- */
+
+export const billiardRates = pgTable('billiard_rates', {
+  id: uuid().primaryKey().defaultRandom(),
+  name: text().notNull(),
+  description: text(),
+  pricePerHour: integer().notNull(),
+  minMinutes: integer().notNull().default(30),
+  incrementMinutes: integer().notNull().default(15),
+  active: boolean().notNull().default(true),
+  sortOrder: integer().notNull().default(0),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+}).enableRLS();
+
+export const venueTables = pgTable(
+  'venue_tables',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    code: text().notNull().unique(),
+    kind: tableKindEnum().notNull(),
+    zone: text().notNull().default(''),
+    capacity: integer().notNull().default(4),
+    allowSelfOrder: boolean().notNull().default(false),
+    qrToken: text().notNull().unique(),
+    rateId: uuid().references(() => billiardRates.id, { onDelete: 'set null' }),
+    needsCleaningAt: timestamp({ withTimezone: true }),
+    sortOrder: integer().notNull().default(0),
+    active: boolean().notNull().default(true),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('venue_tables_kind_idx').on(t.kind, t.sortOrder)],
+).enableRLS();
+
+/* -------------------------------------------------------------------------- */
+/*                                   Bills                                    */
+/* -------------------------------------------------------------------------- */
+
+export const bills = pgTable(
+  'bills',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    billNumber: text().notNull().unique(),
+    tableId: uuid()
+      .notNull()
+      .references(() => venueTables.id, { onDelete: 'restrict' }),
+    guestName: text(),
+    status: billStatusEnum().notNull().default('open'),
+    subtotal: integer().notNull().default(0),
+    discountAmount: integer().notNull().default(0),
+    discountReason: text(),
+    taxRateBps: integer().notNull().default(1000), // 1000 bps = PB1 10%
+    serviceRateBps: integer().notNull().default(500), // 5%
+    taxAmount: integer().notNull().default(0),
+    serviceAmount: integer().notNull().default(0),
+    total: integer().notNull().default(0),
+    note: text(),
+    openedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    closedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    openedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('one_open_bill_per_table')
+      .on(t.tableId)
+      .where(sql`${t.status} = 'open'`),
+    index('bills_status_opened_idx').on(t.status, t.openedAt),
+    index('bills_closed_idx').on(t.closedAt),
+  ],
+).enableRLS();
+
+export const billiardSessions = pgTable(
+  'billiard_sessions',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    billId: uuid()
+      .notNull()
+      .references(() => bills.id, { onDelete: 'cascade' }),
+    tableId: uuid()
+      .notNull()
+      .references(() => venueTables.id, { onDelete: 'restrict' }),
+    status: sessionStatusEnum().notNull().default('running'),
+    startedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    pausedAt: timestamp({ withTimezone: true }),
+    pausedSeconds: integer().notNull().default(0),
+    endedAt: timestamp({ withTimezone: true }),
+    // Snapshot tarif: perubahan master rate tidak mengubah sesi berjalan.
+    ratePerHour: integer().notNull(),
+    minMinutes: integer().notNull(),
+    incrementMinutes: integer().notNull(),
+    amount: integer(),
+    startedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    endedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+  },
+  (t) => [
+    uniqueIndex('one_active_session_per_table')
+      .on(t.tableId)
+      .where(sql`${t.status} <> 'finished'`),
+    index('billiard_sessions_bill_idx').on(t.billId),
+    index('billiard_sessions_status_idx').on(t.status),
+  ],
+).enableRLS();
+
+/* -------------------------------------------------------------------------- */
+/*                                    Menu                                    */
+/* -------------------------------------------------------------------------- */
+
+export const menuCategories = pgTable('menu_categories', {
+  id: uuid().primaryKey().defaultRandom(),
+  name: text().notNull(),
+  icon: text().notNull().default('restaurant_menu'),
+  sortOrder: integer().notNull().default(0),
+  active: boolean().notNull().default(true),
+}).enableRLS();
+
+export const menuItems = pgTable(
+  'menu_items',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    categoryId: uuid()
+      .notNull()
+      .references(() => menuCategories.id, { onDelete: 'restrict' }),
+    name: text().notNull(),
+    description: text().notNull().default(''),
+    price: integer().notNull(),
+    isAvailable: boolean().notNull().default(true),
+    stock: integer(), // null = stok tidak dilacak
+    station: stationEnum().notNull().default('kitchen'),
+    imageIcon: text().notNull().default('restaurant_menu'),
+    isBestSeller: boolean().notNull().default(false),
+    sortOrder: integer().notNull().default(0),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('menu_items_category_idx').on(t.categoryId, t.sortOrder)],
+).enableRLS();
+
+/* -------------------------------------------------------------------------- */
+/*                                  Orders                                    */
+/* -------------------------------------------------------------------------- */
+
+export const orders = pgTable(
+  'orders',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    orderNumber: text().notNull().unique(),
+    billId: uuid()
+      .notNull()
+      .references(() => bills.id, { onDelete: 'cascade' }),
+    tableId: uuid()
+      .notNull()
+      .references(() => venueTables.id, { onDelete: 'restrict' }),
+    source: orderSourceEnum().notNull(),
+    status: orderStatusEnum().notNull().default('pending'),
+    idempotencyKey: text().notNull().unique(),
+    placedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    approvedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    note: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    acceptedAt: timestamp({ withTimezone: true }),
+    preparingAt: timestamp({ withTimezone: true }),
+    readyAt: timestamp({ withTimezone: true }),
+    servedAt: timestamp({ withTimezone: true }),
+    cancelledAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    index('orders_status_idx').on(t.status, t.createdAt),
+    index('orders_bill_idx').on(t.billId),
+    index('orders_table_idx').on(t.tableId, t.createdAt),
+  ],
+).enableRLS();
+
+export const orderItems = pgTable(
+  'order_items',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    orderId: uuid()
+      .notNull()
+      .references(() => orders.id, { onDelete: 'cascade' }),
+    menuItemId: uuid()
+      .notNull()
+      .references(() => menuItems.id, { onDelete: 'restrict' }),
+    nameSnapshot: text().notNull(),
+    priceSnapshot: integer().notNull(),
+    qty: integer().notNull(),
+    note: text(),
+    station: stationEnum().notNull().default('kitchen'),
+    doneAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [index('order_items_order_idx').on(t.orderId)],
+).enableRLS();
+
+/* -------------------------------------------------------------------------- */
+/*                                 Payments                                   */
+/* -------------------------------------------------------------------------- */
+
+export const payments = pgTable(
+  'payments',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    billId: uuid()
+      .notNull()
+      .references(() => bills.id, { onDelete: 'cascade' }),
+    method: payMethodEnum().notNull(),
+    amount: integer().notNull(),
+    tendered: integer(),
+    externalRef: text().unique(),
+    receivedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('payments_bill_idx').on(t.billId),
+    index('payments_created_idx').on(t.createdAt),
+  ],
+).enableRLS();
+
+/* -------------------------------------------------------------------------- */
+/*                                   Shift                                    */
+/* -------------------------------------------------------------------------- */
+
+export const shifts = pgTable(
+  'shifts',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    staffId: uuid()
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    status: shiftStatusEnum().notNull().default('open'),
+    openingCash: integer().notNull().default(0),
+    expectedCash: integer(),
+    actualCash: integer(),
+    difference: integer(),
+    notes: text(),
+    openedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('one_open_shift')
+      .on(t.status)
+      .where(sql`${t.status} = 'open'`),
+    index('shifts_closed_idx').on(t.closedAt),
+  ],
+).enableRLS();
+
+/* -------------------------------------------------------------------------- */
+/*                          Audit log & service calls                         */
+/* -------------------------------------------------------------------------- */
+
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    staffId: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    action: text().notNull(),
+    entityType: text().notNull(),
+    entityId: text(),
+    detail: jsonb().$type<Record<string, unknown>>(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('audit_log_created_idx').on(t.createdAt)],
+).enableRLS();
+
+export const serviceRequests = pgTable(
+  'service_requests',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tableId: uuid()
+      .notNull()
+      .references(() => venueTables.id, { onDelete: 'cascade' }),
+    type: serviceRequestTypeEnum().notNull(),
+    status: serviceRequestStatusEnum().notNull().default('open'),
+    note: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp({ withTimezone: true }),
+    resolvedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+  },
+  (t) => [index('service_requests_status_idx').on(t.status, t.createdAt)],
+).enableRLS();
+
+/* -------------------------------------------------------------------------- */
+/*                                   Types                                    */
+/* -------------------------------------------------------------------------- */
+
+export type StaffProfile = typeof profiles.$inferSelect;
+export type VenueTable = typeof venueTables.$inferSelect;
+export type BilliardRate = typeof billiardRates.$inferSelect;
+export type Bill = typeof bills.$inferSelect;
+export type BilliardSession = typeof billiardSessions.$inferSelect;
+export type MenuCategory = typeof menuCategories.$inferSelect;
+export type MenuItem = typeof menuItems.$inferSelect;
+export type Order = typeof orders.$inferSelect;
+export type OrderItem = typeof orderItems.$inferSelect;
+export type Payment = typeof payments.$inferSelect;
+export type Shift = typeof shifts.$inferSelect;
+export type AuditEntry = typeof auditLog.$inferSelect;
+export type ServiceRequest = typeof serviceRequests.$inferSelect;
+
+export type ProfileRole = StaffProfile['role'];
+export type TableKind = VenueTable['kind'];
+export type OrderStatus = Order['status'];
+export type OrderSource = Order['source'];
+export type PayMethod = Payment['method'];
+export type StationType = 'kitchen' | 'bar';
+export type Station = StationType;

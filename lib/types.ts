@@ -1,0 +1,359 @@
+import type {
+  BilliardRate,
+  OrderSource,
+  OrderStatus,
+  PayMethod,
+  Shift,
+  StationType,
+  TableKind,
+} from './db/schema';
+
+export type { OrderSource, OrderStatus, PayMethod } from './db/schema';
+
+export type RateView = Pick<
+  BilliardRate,
+  | 'id'
+  | 'name'
+  | 'description'
+  | 'pricePerHour'
+  | 'minMinutes'
+  | 'incrementMinutes'
+  | 'active'
+  | 'sortOrder'
+>;
+
+export type SessionView = {
+  id: string;
+  status: 'running' | 'paused' | 'finished';
+  startedAt: string;
+  endedAt: string | null;
+  pausedAt: string | null;
+  pausedSeconds: number;
+  baseElapsedSeconds: number;
+  ratePerHour: number;
+  minMinutes: number;
+  incrementMinutes: number;
+  amount: number | null;
+  estimate: number;
+};
+
+export type OrderItemView = {
+  id: string;
+  menuItemId: string;
+  name: string;
+  qty: number;
+  price: number;
+  note: string | null;
+  station: StationType;
+  done: boolean;
+};
+
+export type OrderView = {
+  id: string;
+  number: string;
+  source: OrderSource;
+  status: OrderStatus;
+  createdAt: string;
+  acceptedAt: string | null;
+  preparingAt: string | null;
+  readyAt: string | null;
+  servedAt: string | null;
+  cancelledAt: string | null;
+  note: string | null;
+  items: OrderItemView[];
+  subtotal: number;
+};
+
+export type BillView = {
+  id: string;
+  number: string;
+  guestName: string | null;
+  status: 'open' | 'paid' | 'void';
+  openedAt: string;
+  sessions: SessionView[];
+  activeSession: SessionView | null;
+  orders: OrderView[];
+  sessionSubtotal: number;
+  ordersSubtotal: number;
+  subtotal: number;
+  discountAmount: number;
+  taxRateBps: number;
+  serviceRateBps: number;
+  taxAmount: number;
+  serviceAmount: number;
+  total: number;
+  pendingOrdersCount: number;
+};
+
+export type TableState = 'available' | 'running' | 'paused' | 'occupied' | 'cleaning';
+
+export type ServiceRequestView = {
+  id: string;
+  tableId: string;
+  tableCode: string;
+  type: 'waiter' | 'bill' | 'assistance';
+  note: string | null;
+  createdAt: string;
+};
+
+export type TableView = {
+  id: string;
+  code: string;
+  kind: TableKind;
+  zone: string;
+  capacity: number;
+  allowSelfOrder: boolean;
+  qrToken: string;
+  rate: RateView | null;
+  needsCleaningAt: string | null;
+  state: TableState;
+  bill: BillView | null;
+  serviceRequests: ServiceRequestView[];
+  pendingOrdersCount: number;
+};
+
+export type ShiftView = {
+  id: string;
+  staffId: string;
+  staffName: string;
+  status: 'open' | 'closed';
+  openingCash: number;
+  expectedCash: number | null;
+  actualCash: number | null;
+  difference: number | null;
+  notes: string | null;
+  openedAt: string;
+  closedAt: string | null;
+};
+
+export type MenuCategoryView = {
+  id: string;
+  name: string;
+  icon: string;
+  sortOrder: number;
+  active: boolean;
+};
+
+export type MenuItemView = {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  name: string;
+  description: string;
+  price: number;
+  stock: number | null;
+  station: StationType;
+  imageIcon: string;
+  bestSeller: boolean;
+  available: boolean;
+  soldOut: boolean;
+  sortOrder: number;
+};
+
+export type CashierMetrics = {
+  billiardTotal: number;
+  billiardRunning: number;
+  billiardPaused: number;
+  billiardAvailable: number;
+  billiardCleaning: number;
+  cafeTotal: number;
+  cafeOccupied: number;
+  openBillCount: number;
+  openBillTotal: number;
+  pendingCount: number;
+  serviceRequestCount: number;
+};
+
+export type CashierData = {
+  serverNow: string;
+  tables: TableView[];
+  metrics: CashierMetrics;
+  shift: ShiftView | null;
+  categories: MenuCategoryView[];
+  menuItems: MenuItemView[];
+  serviceRequests: ServiceRequestView[];
+};
+
+export type KdsOrderView = OrderView & {
+  tableCode: string;
+  tableZone: string;
+  tableKind: TableKind;
+  waitSeconds: number;
+  stationItemsDone: number;
+  stationItemsTotal: number;
+  allItemsDone: boolean;
+};
+
+export type KdsMetrics = {
+  activeTickets: number;
+  avgServeSeconds: number | null;
+  overdueCount: number;
+  readyCount: number;
+  kitchenCount: number;
+  barCount: number;
+};
+
+export type KdsData = {
+  serverNow: string;
+  orders: KdsOrderView[];
+  metrics: KdsMetrics;
+};
+
+export type PaymentBreakdown = {
+  method: PayMethod;
+  amount: number;
+  count: number;
+};
+
+export type AdminData = {
+  serverNow: string;
+  shift: ShiftView | null;
+  shiftStats: {
+    revenue: number;
+    billiardRevenue: number;
+    fnbRevenue: number;
+    cashRevenue: number;
+    nonCashRevenue: number;
+    transactionCount: number;
+    openBills: number;
+    openBillTotal: number;
+    cashInDrawer: number;
+    expectedCash: number;
+    avgPlaySeconds: number | null;
+    totalPlaySeconds: number;
+    topTable: { code: string; amount: number; seconds: number } | null;
+    paymentBreakdown: PaymentBreakdown[];
+  };
+  rates: Array<RateView & { tableCount: number }>;
+  audits: Array<{
+    id: string;
+    staffName: string;
+    staffRole: string;
+    action: string;
+    entityType: string;
+    entityId: string | null;
+    detail: Record<string, unknown> | null;
+    createdAt: string;
+  }>;
+  shiftHistory: ShiftView[];
+  menuCount: number;
+  tableCount: number;
+  openServiceRequests: number;
+};
+
+export type ShiftReportData = {
+  shift: ShiftView;
+  staffName: string;
+  serverNow: string;
+  payments: Array<{
+    id: string;
+    billNumber: string;
+    tableCode: string;
+    method: PayMethod;
+    amount: number;
+    createdAt: string;
+  }>;
+  totals: Array<{ method: PayMethod; amount: number; count: number }>;
+  totalRevenue: number;
+  cashRevenue: number;
+  expectedCash: number;
+  bills: Array<{
+    id: string;
+    billNumber: string;
+    tableCode: string;
+    guestName: string | null;
+    total: number;
+    closedAt: string | null;
+  }>;
+};
+
+export type ReportDay = {
+  date: string;
+  revenue: number;
+  transactionCount: number;
+  billiardRevenue: number;
+  fnbRevenue: number;
+};
+
+export type ReportData = {
+  days: ReportDay[];
+  topItems: Array<{ name: string; qty: number; revenue: number }>;
+  topTables: Array<{ code: string; zone: string; revenue: number; sessions: number }>;
+  paymentMix: Array<{ method: PayMethod; amount: number; count: number; share: number }>;
+  totals: { revenue: number; transactions: number; avgBill: number; billiard: number; fnb: number };
+};
+
+export type MenuAdminData = {
+  categories: MenuCategoryView[];
+  items: MenuItemView[];
+};
+
+export type TablesAdminData = {
+  tables: Array<
+    TableView & {
+      qrDataUrl: string;
+      customerUrl: string;
+      rateName: string | null;
+      activeSession: SessionView | null;
+    }
+  >;
+  rates: RateView[];
+};
+
+export type CustomerOrderView = {
+  id: string;
+  number: string;
+  status: OrderStatus;
+  createdAt: string;
+  acceptedAt: string | null;
+  preparingAt: string | null;
+  readyAt: string | null;
+  servedAt: string | null;
+  cancelledAt: string | null;
+  items: Array<{ name: string; qty: number; note: string | null; station: StationType }>;
+  subtotal: number;
+};
+
+export type CustomerData = {
+  table: {
+    code: string;
+    zone: string;
+    kind: TableKind;
+    capacity: number;
+    allowSelfOrder: boolean;
+    qrToken: string;
+  };
+  venueName: string;
+  categories: MenuCategoryView[];
+  items: MenuItemView[];
+  orders: CustomerOrderView[];
+  bill: {
+    id: string;
+    number: string;
+    subtotal: number;
+    total: number;
+    openedAt: string;
+  } | null;
+  serverNow: string;
+  openServiceRequest: boolean;
+};
+
+export type PaymentInput = {
+  method: PayMethod;
+  amount: number;
+  tendered?: number;
+};
+
+export type CartLine = {
+  menuItemId: string;
+  qty: number;
+  note?: string;
+};
+
+export type PublicOrderStatusResponse = {
+  serverNow: string;
+  orders: CustomerOrderView[];
+  bill: CustomerData['bill'];
+};
+
+export type ShiftHistoryItem = Shift & { staffName: string };
