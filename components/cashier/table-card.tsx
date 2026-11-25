@@ -120,9 +120,11 @@ export function TableCard({
             {bill?.guestName ||
               (table.state === 'cleaning'
                 ? 'Turnover selesai'
-                : table.kind === 'billiard'
-                  ? 'Meja kosong / siap pakai'
-                  : 'Meja cafe kosong')}
+                : table.state === 'available'
+                  ? table.kind === 'billiard'
+                    ? 'Meja kosong / siap pakai'
+                    : 'Meja cafe kosong'
+                  : 'Walk-in guest')}
           </p>
           <span className="mt-0.5 block text-[10px] uppercase tracking-wider text-outline">
             {session

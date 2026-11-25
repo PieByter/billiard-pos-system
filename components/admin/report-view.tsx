@@ -30,21 +30,30 @@ export function ReportView({ data, range }: { data: ReportData; range: number })
         title="Laporan Penjualan"
         description="Tren omzet, komposisi billiard vs F&B, metode bayar, dan menu terlaris."
         actions={
-          <div className="flex items-center gap-1 rounded-xl border border-outline-variant/25 bg-surface-container-lowest p-1">
-            {RANGES.map((value) => (
-              <Link
-                key={value}
-                href={`/staff/admin/reports?range=${value}`}
-                className={cn(
-                  'rounded-lg px-3 py-1.5 text-body-sm font-semibold transition-colors',
-                  range === value
-                    ? 'bg-surface-container-high text-primary'
-                    : 'text-on-surface-variant hover:text-on-surface',
-                )}
-              >
-                {value} hari
-              </Link>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={`/api/reports/export?range=${range}`}
+              className="flex items-center gap-1.5 rounded-lg border border-outline-variant/35 bg-surface-container px-3 py-2 text-body-sm font-semibold text-on-surface-variant transition-colors hover:border-primary/40 hover:text-primary"
+            >
+              <Icon name="download" className="text-[17px]" />
+              Export CSV
+            </a>
+            <div className="flex items-center gap-1 rounded-xl border border-outline-variant/25 bg-surface-container-lowest p-1">
+              {RANGES.map((value) => (
+                <Link
+                  key={value}
+                  href={`/staff/admin/reports?range=${value}`}
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 text-body-sm font-semibold transition-colors',
+                    range === value
+                      ? 'bg-surface-container-high text-primary'
+                      : 'text-on-surface-variant hover:text-on-surface',
+                  )}
+                >
+                  {value} hari
+                </Link>
+              ))}
+            </div>
           </div>
         }
       />

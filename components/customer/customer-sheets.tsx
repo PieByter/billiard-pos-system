@@ -29,6 +29,13 @@ const ORDER_STEPS: Array<{
   { key: 'served', label: 'Disajikan', icon: 'done_all', description: 'Selamat menikmati' },
 ];
 
+/** Label status dari sudut pandang tamu (bukan istilah internal KDS). */
+const CUSTOMER_STATUS_LABELS: Record<string, string> = {
+  ...ORDER_STATUS_LABELS,
+  accepted: 'Diterima kasir',
+  served: 'Disajikan',
+};
+
 export function CartSheet({
   open,
   onClose,
@@ -202,7 +209,7 @@ export function TrackerSheet({
       title="Status pesanan"
       subtitle={
         latest
-          ? `${latest.number} · ${ORDER_STATUS_LABELS[latest.status]}`
+          ? `${latest.number} · ${CUSTOMER_STATUS_LABELS[latest.status] ?? latest.status}`
           : 'Belum ada order aktif'
       }
       icon="radar"
@@ -235,7 +242,7 @@ export function TrackerSheet({
                 </span>
                 <div>
                   <div className="text-body-sm font-bold text-on-surface">
-                    {ORDER_STATUS_LABELS[latest.status]}
+                    {CUSTOMER_STATUS_LABELS[latest.status] ?? latest.status}
                   </div>
                   <div className="text-[10px] text-on-surface-variant">
                     {latest.number} · {formatClock(latest.createdAt)}
@@ -363,7 +370,7 @@ export function TrackerSheet({
                               : 'cyan'
                       }
                     >
-                      {ORDER_STATUS_LABELS[order.status]}
+                      {CUSTOMER_STATUS_LABELS[order.status] ?? order.status}
                     </Badge>
                   </div>
                 ))}

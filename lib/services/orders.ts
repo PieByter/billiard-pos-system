@@ -126,6 +126,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
           .where(
             and(
               eq(orders.tableId, input.tableId),
+              eq(orders.source, 'customer_qr'),
               gte(orders.createdAt, sql`now() - interval '60 seconds'`),
             ),
           );
@@ -203,7 +204,11 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         }),
       );
 
-      const { total } = await recalcBillTotals(tx, bill.id, now);
+      await recalcBillTotals(tx, bill.id, now);
+      const orderTotal = items.reduce(
+        (sum, line) => sum + menuById.get(line.menuItemId)!.price * line.qty,
+        0,
+      );
 
       await audit(tx, {
         staffId: input.actor.type === 'staff' ? input.actor.id : null,
@@ -225,7 +230,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         status: order.status,
         billId: bill.id,
         billNumber: bill.billNumber,
-        orderTotal: total,
+        orderTotal,
         duplicate: false,
       };
     });

@@ -21,10 +21,10 @@ worker).
 | `/login` | Login staff, quick-login demo, branding venue |
 | `/staff/cashier` | Matrix 8 meja billiard + 12 meja cafe, timer live, pause/resume, stop & pay, pindah meja, order F&B, split payment, QR per meja, approval self-order, panggilan waiter |
 | `/staff/kitchen` | KDS 3 lane (Baru / Dimasak / Siap Antar), filter station, checklist item, overdue >12m, buzzer, fullscreen, print tiket |
-| `/staff/admin` | KPI shift, balancing kas, komposisi pembayaran, master tarif, audit log, riwayat shift, X/Z report |
+| `/staff/admin` | KPI shift, balancing kas + hitung per pecahan, komposisi pembayaran, master tarif, audit log, riwayat shift, X/Z report |
 | `/staff/admin/menu` | CRUD menu, harga, stok, station, best seller, availability |
 | `/staff/admin/tables` | CRUD meja, tarif, flag self-order, QR generation & rotasi token |
-| `/staff/admin/reports` | Omzet 7/14/30 hari, billiard vs F&B, metode bayar, top menu & meja |
+| `/staff/admin/reports` | Omzet 7/14/30 hari, billiard vs F&B, metode bayar, top menu & meja, export CSV |
 | `/print/*` | Struk bill 80mm, tiket kitchen 80mm, X/Z report shift, kartu QR A4 |
 
 ### Layar tamu
@@ -285,6 +285,16 @@ public/                         # manifest, sw.js, icons
 | Tarif peak/off-peak | Model tarif per meja. Slot jam dapat dibuat sebagai rate terpisah dan di-assign ke meja; belum ada auto-switch tarif di tengah sesi (snapshot rate). |
 | Split bill | Split berdasarkan metode bayar, bukan per item/seat. |
 | Stock | Opsional per menu (`stock = null` = tak dilacak). |
+
+### Belum termasuk v1 (roadmap)
+Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi eksternal, bukan karena terlewat:
+
+- **Auto-switch tarif peak/off-peak.** Saat ini tarif dipilih per meja dan di-snapshot saat start. Untuk harga otomatis per jam/hari butuh tabel jadwal tarif + UI pengaturan.
+- **Staff management UI.** Staff masih di-provision lewat seed/SQL + Supabase Auth (lihat §3.4) agar tidak ada endpoint admin yang bisa membuat auth user tanpa service role.
+- **QRIS create-charge / refund otomatis.** Yang tersedia baru webhook settlement opsional; pembuatan QR dinamis dan refund butuh payment gateway (Midtrans/Xendit).
+- **Offline write queue.** PWA menyimpan menu read-only; order/pembayaran tetap butuh jaringan (sesuai PRD v1).
+- **ESC/POS langsung / print agent.** Cetak memakai `window.print()` 80mm; printer LAN perlu driver di komputer kasir.
+- **Cloudflare Turnstile.** Self-order sudah dilindungi status pending + rate limit 5 order/menit per meja; Turnstile bisa ditambah jika spam QR terbukti jadi masalah.
 
 ---
 

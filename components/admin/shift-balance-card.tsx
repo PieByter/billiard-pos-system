@@ -7,11 +7,18 @@ import { closeShiftAction, openShiftAction } from '@/app/actions/shifts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { FormError, Label, Textarea } from '@/components/ui/form';
+import { FormError, Input, Label, Textarea } from '@/components/ui/form';
 import { Icon } from '@/components/ui/icon';
+import { Modal } from '@/components/ui/modal';
 import { MoneyInput } from '@/components/ui/money-input';
 import { formatClock, formatRp, formatRelative } from '@/lib/format';
 import type { AdminData } from '@/lib/types';
+
+const DENOMINATIONS = [100_000, 50_000, 20_000, 10_000, 5_000, 2_000, 1_000, 500, 200, 100];
+
+function emptyDenominationCounts(): Record<number, number> {
+  return Object.fromEntries(DENOMINATIONS.map((value) => [value, 0]));
+}
 
 export function ShiftBalanceCard({
   shift,
@@ -30,16 +37,34 @@ export function ShiftBalanceCard({
   const [error, setError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
   const [openingCash, setOpeningCash] = useState(500_000);
+  const [denomOpen, setDenomOpen] = useState(false);
+  const [denoms, setDenoms] = useState<Record<number, number>>(emptyDenominationCounts);
 
   useEffect(() => {
     setActual(shift?.expectedCash ?? stats.expectedCash);
     setCounted(false);
+    setDenoms(emptyDenominationCounts());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shift?.id, stats.expectedCash]);
 
   const expected = shift?.expectedCash ?? stats.expectedCash;
   const difference = actual - expected;
   const match = difference === 0;
+  const denominationTotal = DENOMINATIONS.reduce(
+    (sum, value) => sum + value * (denoms[value] ?? 0),
+    0,
+  );
+
+  function openDenominations() {
+    setDenoms(emptyDenominationCounts());
+    setDenomOpen(true);
+  }
+
+  function applyDenominations() {
+    setActual(denominationTotal);
+    setCounted(true);
+    setDenomOpen(false);
+  }
 
   async function closeShift() {
     setLoading(true);
@@ -164,16 +189,26 @@ export function ShiftBalanceCard({
           <div>
             <Label
               hint={
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActual(expected);
-                    setCounted(true);
-                  }}
-                  className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-secondary transition-colors hover:bg-secondary/10"
-                >
-                  Isi target
-                </button>
+                <span className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={openDenominations}
+                    className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-primary transition-colors hover:bg-primary/10"
+                  >
+                    Hitung per pecahan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActual(expected);
+                      setCounted(true);
+                      setDenoms(emptyDenominationCounts());
+                    }}
+                    className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-secondary transition-colors hover:bg-secondary/10"
+                  >
+                    Isi target
+                  </button>
+                </span>
               }
             >
               Kas fisik di laci
@@ -280,6 +315,65 @@ export function ShiftBalanceCard({
           </Button>
         </>
       )}
+
+      <Modal
+        open={denomOpen}
+        onClose={() => setDenomOpen(false)}
+        title="Hitung kas per pecahan"
+        subtitle="Masukkan jumlah lembar/koin fisik di laci. Total otomatis masuk ke kas fisik."
+        icon="payments"
+        size="md"
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="secondary" className="sm:flex-1" onClick={() => setDenomOpen(false)}>
+              Batal
+            </Button>
+            <Button variant="primary" className="sm:flex-[2]" onClick={applyDenominations}>
+              <Icon name="check" className="text-[18px]" />
+              Gunakan total {formatRp(denominationTotal)}
+            </Button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-2">
+            {DENOMINATIONS.map((value) => (
+              <div key={value} className="flex items-center justify-between gap-2 rounded-lg border border-outline-variant/25 bg-surface-container px-2.5 py-2">
+                <span className="numeric text-body-sm font-semibold text-on-surface">
+                  {formatRp(value)}
+                </span>
+                <Input
+                  type="number"
+                  min={0}
+                  step={1}
+                  inputMode="numeric"
+                  aria-label={`Jumlah pecahan ${formatRp(value)}`}
+                  containerClassName="w-20"
+                  className="h-8 text-right"
+                  value={denoms[value] ?? 0}
+                  onChange={(event) => {
+                    const qty = Math.max(0, Math.floor(Number(event.target.value) || 0));
+                    setDenoms((current) => ({ ...current, [value]: qty }));
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between rounded-xl border border-primary/30 bg-primary/10 px-3 py-2.5">
+            <span className="text-body-sm font-semibold text-on-surface">Total hitung fisik</span>
+            <span className="numeric text-numeric-md font-bold text-primary">
+              {formatRp(denominationTotal)}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDenoms(emptyDenominationCounts())}
+            className="self-start text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant transition-colors hover:text-on-surface"
+          >
+            Reset hitungan
+          </button>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={confirmClose}

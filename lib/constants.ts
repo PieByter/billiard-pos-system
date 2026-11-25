@@ -49,7 +49,7 @@ export const ORDER_STATUS_LABELS: Record<string, string> = {
   accepted: 'Baru Masuk',
   preparing: 'Sedang Dimasak',
   ready: 'Siap Antar',
-  served: 'Served',
+  served: 'Disajikan',
   cancelled: 'Dibatalkan',
 };
 

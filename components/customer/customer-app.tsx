@@ -209,11 +209,13 @@ export function CustomerApp({ data }: { data: CustomerData }) {
     setCart({});
     setOrderNote('');
     setCartOpen(false);
+    // Ambil status terbaru dulu agar tracker langsung menampilkan order yang baru dibuat,
+    // bukan order lama yang masih tersimpan di state.
+    await refreshOrders();
     setTrackerOpen(true);
     toast.success('Pesanan terkirim!', {
       description: 'Kasir akan mengonfirmasi sebentar lagi. Status bisa dilihat live.',
     });
-    await refreshOrders();
   }
 
   return (

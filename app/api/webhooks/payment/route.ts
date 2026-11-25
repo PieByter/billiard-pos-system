@@ -114,6 +114,7 @@ export async function POST(request: Request) {
         throw new AppError('PENDING_ORDERS', 'Masih ada order pending.');
       }
 
+      // recalcBillTotals sudah menyimpan subtotal/pajak/service/total terbaru ke row bill.
       const { total } = await recalcBillTotals(tx, bill.id, now);
       const existingPayments = await tx
         .select({ amount: payments.amount })
@@ -138,14 +139,7 @@ export async function POST(request: Request) {
 
       await tx
         .update(bills)
-        .set({
-          status: 'paid',
-          closedAt: now,
-          subtotal: bill.subtotal,
-          taxAmount: bill.taxAmount,
-          serviceAmount: bill.serviceAmount,
-          total,
-        })
+        .set({ status: 'paid', closedAt: now })
         .where(and(eq(bills.id, bill.id), eq(bills.status, 'open')));
       await tx
         .update(venueTables)
