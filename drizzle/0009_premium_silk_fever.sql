@@ -1,0 +1,2 @@
+ALTER TABLE "billiard_sessions" ADD COLUMN "rate_segments" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "billiard_sessions" ADD COLUMN "pause_log" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -11,7 +11,7 @@ import {
   venueTables,
   type PrintJob,
 } from '@/lib/db/schema';
-import { formatRp } from '@/lib/billing';
+import { computeSegmentedSessionBilling, formatRp } from '@/lib/billing';
 import { PAY_METHOD_LABELS } from '@/lib/constants';
 import { escPosToText, type EscPosDocument } from '@/lib/print/escpos';
 import { getActiveOutletId } from '@/lib/outlet';
@@ -115,18 +115,33 @@ export async function enqueueBillPrintJob(
   ];
   let subtotal = 0;
   for (const session of sessions) {
-    const amount = session.amount ?? 0;
+    const billing = computeSegmentedSessionBilling({
+      startedAt: session.startedAt,
+      endedAt: session.endedAt ?? new Date(),
+      pauses: session.pauseLog,
+      pausedSeconds: session.pausedSeconds,
+      segments: session.rateSegments,
+      ratePerHour: session.ratePerHour,
+      minMinutes: session.minMinutes,
+      incrementMinutes: session.incrementMinutes,
+      rateName: session.rateSegments[0]?.rateName,
+    });
+    const amount = session.amount ?? billing.amount;
     subtotal += amount;
-    const minutes = session.endedAt
-      ? Math.max(
-          0,
-          Math.ceil(
-            (session.endedAt.getTime() - session.startedAt.getTime()) / 60_000 -
-              session.pausedSeconds / 60,
-          ),
-        )
-      : 0;
+    const minutes = billing.totalActiveMinutes;
     lines.push(line(`Sesi billiard ${minutes}m`, formatRp(amount)));
+    if (billing.segments.length > 1) {
+      billing.segments.forEach((segment, index) => {
+        lines.push(
+          `  Sesi ${index + 1} ${segment.rateName} ${segment.activeMinutes}m ${formatRp(
+            segment.amount,
+          )}`,
+        );
+      });
+      if (billing.minimumTopUpAmount > 0) {
+        lines.push(`  Penyesuaian minimum ${formatRp(billing.minimumTopUpAmount)}`);
+      }
+    }
   }
   for (const item of items) {
     const amount = item.priceSnapshot * item.qty;

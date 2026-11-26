@@ -3,6 +3,7 @@ import {
   allocateSplitTotals,
   billableElapsedSeconds,
   computeBillTotals,
+  computeSegmentedSessionBilling,
   computeSessionAmount,
   computeSessionAmountFromSeconds,
 } from './billing';
@@ -63,6 +64,96 @@ describe('pause dan elapsed', () => {
     const result = computeSessionAmount(start, end, 3600, vip);
     expect(result.billableMinutes).toBe(60);
     expect(result.amount).toBe(60_000);
+  });
+});
+
+describe('computeSegmentedSessionBilling', () => {
+  const segments = [
+    {
+      startAt: '2026-01-01T10:00:00.000Z',
+      endAt: '2026-01-01T10:30:00.000Z',
+      rateName: 'Happy Hour',
+      ratePerHour: 45_000,
+      minMinutes: 30,
+      incrementMinutes: 15,
+      scheduleId: 'happy',
+    },
+    {
+      startAt: '2026-01-01T10:30:00.000Z',
+      endAt: '2026-01-01T11:00:00.000Z',
+      rateName: 'VIP',
+      ratePerHour: 60_000,
+      minMinutes: 30,
+      incrementMinutes: 15,
+      scheduleId: 'vip',
+    },
+  ];
+
+  it('membagi 30 menit happy hour + 30 menit VIP', () => {
+    const result = computeSegmentedSessionBilling({
+      startedAt: '2026-01-01T10:00:00.000Z',
+      endedAt: '2026-01-01T11:00:00.000Z',
+      segments,
+      ratePerHour: 45_000,
+      minMinutes: 30,
+      incrementMinutes: 15,
+    });
+    expect(result.segments).toHaveLength(2);
+    expect(result.segments[0].amount).toBe(22_500);
+    expect(result.segments[1].amount).toBe(30_000);
+    expect(result.minimumTopUpAmount).toBe(0);
+    expect(result.amount).toBe(52_500);
+  });
+
+  it('menerapkan minimum total pada tarif segmen pertama', () => {
+    const shortSegments = [
+      { ...segments[0], endAt: '2026-01-01T10:10:00.000Z' },
+      { ...segments[1], startAt: '2026-01-01T10:10:00.000Z', endAt: '2026-01-01T10:20:00.000Z' },
+    ];
+    const result = computeSegmentedSessionBilling({
+      startedAt: '2026-01-01T10:00:00.000Z',
+      endedAt: '2026-01-01T10:20:00.000Z',
+      segments: shortSegments,
+      ratePerHour: 45_000,
+      minMinutes: 30,
+      incrementMinutes: 15,
+    });
+    expect(result.totalActiveMinutes).toBe(20);
+    expect(result.totalBillableMinutes).toBe(30);
+    expect(result.minimumTopUpAmount).toBe(7_500);
+    expect(result.amount).toBe(25_000);
+  });
+
+  it('pause setelah batas tarif tidak ikut dihitung sebagai happy hour', () => {
+    const result = computeSegmentedSessionBilling({
+      startedAt: '2026-01-01T10:00:00.000Z',
+      endedAt: '2026-01-01T11:00:00.000Z',
+      pauses: [
+        { startAt: '2026-01-01T10:10:00.000Z', endAt: '2026-01-01T10:40:00.000Z' },
+      ],
+      segments,
+      ratePerHour: 45_000,
+      minMinutes: 30,
+      incrementMinutes: 15,
+    });
+    expect(result.totalActiveMinutes).toBe(30);
+    expect(result.segments[0].amount).toBe(7_500);
+    expect(result.segments[1].amount).toBe(20_000);
+    expect(result.amount).toBe(27_500);
+  });
+
+  it('fallback ke tarif tunggal untuk sesi lama tanpa snapshot segmen', () => {
+    const result = computeSegmentedSessionBilling({
+      startedAt: '2026-01-01T10:00:00.000Z',
+      endedAt: '2026-01-01T11:00:00.000Z',
+      segments: [],
+      ratePerHour: 50_000,
+      minMinutes: 30,
+      incrementMinutes: 15,
+      rateName: 'Standard',
+    });
+    expect(result.segments).toHaveLength(1);
+    expect(result.amount).toBe(50_000);
   });
 });
 

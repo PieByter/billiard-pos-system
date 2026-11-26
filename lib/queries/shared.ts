@@ -2,7 +2,7 @@ import type { Bill, BilliardSession, Order, OrderItem } from '@/lib/db/schema';
 import {
   billableElapsedSeconds,
   computeBillTotals,
-  computeSessionAmountFromSeconds,
+  computeSegmentedSessionBilling,
 } from '@/lib/billing';
 import { VENUE_TIMEZONE } from '@/lib/constants';
 import type {
@@ -22,11 +22,6 @@ export function iso(value: Date | string | null | undefined): string | null {
 }
 
 export function buildSessionView(session: BilliardSession, now: Date): SessionView {
-  const rate = {
-    ratePerHour: session.ratePerHour,
-    minMinutes: session.minMinutes,
-    incrementMinutes: session.incrementMinutes,
-  };
   let at: Date;
   if (session.status === 'finished') {
     at = new Date(session.endedAt ?? now);
@@ -40,8 +35,18 @@ export function buildSessionView(session: BilliardSession, now: Date): SessionVi
     at,
     session.pausedSeconds,
   );
-  const estimate =
-    session.amount ?? computeSessionAmountFromSeconds(baseElapsedSeconds, rate).amount;
+  const billing = computeSegmentedSessionBilling({
+    startedAt: session.startedAt,
+    endedAt: at,
+    pauses: session.pauseLog,
+    pausedSeconds: session.pausedSeconds,
+    segments: session.rateSegments,
+    ratePerHour: session.ratePerHour,
+    minMinutes: session.minMinutes,
+    incrementMinutes: session.incrementMinutes,
+    rateName: session.rateSegments[0]?.rateName,
+  });
+  const estimate = session.amount ?? billing.amount;
 
   return {
     id: session.id,
@@ -55,6 +60,10 @@ export function buildSessionView(session: BilliardSession, now: Date): SessionVi
     ratePerHour: session.ratePerHour,
     minMinutes: session.minMinutes,
     incrementMinutes: session.incrementMinutes,
+    rateSegments: session.rateSegments ?? [],
+    pauses: session.pauseLog ?? [],
+    billingSegments: billing.segments,
+    billingMinimumTopUp: billing.minimumTopUpAmount,
     amount: session.amount,
     estimate,
   };

@@ -1,13 +1,13 @@
 'use client';
 
 import { cn, formatClock, formatRelative, formatRp, initials } from '@/lib/format';
-import type { PayMethod, TableView } from '@/lib/types';
+import type { PayMethod, SessionView, TableView } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { EmptyState, InfoRow } from '@/components/ui/stat-card';
 import { LiveDuration } from '@/components/live/live';
-import { LiveSessionValue, useLiveBillTotals } from './live-bill';
+import { LiveSessionValue, useLiveBillTotals, useLiveSessionBilling } from './live-bill';
 import { orderStatusTone, ORDER_SOURCE_LABEL, ORDER_STATUS_SHORT } from './status';
 
 type BillPanelProps = {
@@ -180,6 +180,38 @@ export function BillPanel(props: BillPanelProps) {
   return <ActiveBillPanel {...props} table={table} />;
 }
 
+function LiveSessionSegments({ session }: { session: SessionView }) {
+  const { billing } = useLiveSessionBilling(session);
+  if (!billing) return null;
+  const visibleSegments = billing.segments.filter((segment) => segment.activeMinutes > 0);
+  if (visibleSegments.length <= 1 && billing.minimumTopUpAmount <= 0) return null;
+  return (
+    <div className="mt-0.5 flex flex-col gap-0.5 border-t border-outline-variant/15 pt-1">
+      {visibleSegments.map((segment, segmentIndex) => (
+        <div
+          key={`${segment.startAt}-${segment.rateName}`}
+          className="flex items-center justify-between gap-2 text-[10px]"
+        >
+          <span className="min-w-0 truncate text-on-surface-variant">
+            Sesi {segmentIndex + 1} · {segment.rateName} · {formatClock(segment.startAt)}–
+            {formatClock(segment.endAt)} · {segment.activeMinutes}m ×{' '}
+            {formatRp(segment.ratePerHour)}/jam
+          </span>
+          <span className="numeric shrink-0 font-semibold text-on-surface">
+            {formatRp(segment.amount)}
+          </span>
+        </div>
+      ))}
+      {billing.minimumTopUpAmount > 0 ? (
+        <div className="flex items-center justify-between gap-2 text-[10px] text-outline">
+          <span>Minimum / increment</span>
+          <span className="numeric">{formatRp(billing.minimumTopUpAmount)}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ActiveBillPanel({ table, ...props }: BillPanelProps & { table: TableView }) {
   const bill = table.bill!;
   const totals = useLiveBillTotals(bill);
@@ -311,6 +343,7 @@ function ActiveBillPanel({ table, ...props }: BillPanelProps & { table: TableVie
                     : 'Billiard engine running'}
               </span>
             </div>
+            <LiveSessionSegments session={item} />
           </div>
         ))}
 

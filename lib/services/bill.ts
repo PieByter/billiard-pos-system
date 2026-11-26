@@ -13,12 +13,7 @@ import {
   type Bill,
 } from '@/lib/db/schema';
 import { SERVICE_RATE_BPS, TAX_RATE_BPS } from '@/lib/constants';
-import {
-  billableElapsedSeconds,
-  computeBillTotals,
-  computeSessionAmount,
-  computeSessionAmountFromSeconds,
-} from '@/lib/billing';
+import { computeBillTotals, computeSegmentedSessionBilling } from '@/lib/billing';
 import { billNumber } from '@/lib/ids';
 import { restoreIngredientsForOrder } from './inventory';
 import {
@@ -95,28 +90,27 @@ export async function recalcBillTotals(
 
   let subtotal = 0;
   for (const session of sessions) {
-    if (session.status === 'finished') {
-      subtotal +=
-        session.amount ??
-        computeSessionAmount(
-          session.startedAt,
-          session.endedAt ?? now,
-          session.pausedSeconds,
-          {
-            ratePerHour: session.ratePerHour,
-            minMinutes: session.minMinutes,
-            incrementMinutes: session.incrementMinutes,
-          },
-        ).amount;
-    } else {
-      const at = session.status === 'paused' ? new Date(session.pausedAt ?? now) : now;
-      const seconds = billableElapsedSeconds(session.startedAt, at, session.pausedSeconds);
-      subtotal += computeSessionAmountFromSeconds(seconds, {
-        ratePerHour: session.ratePerHour,
-        minMinutes: session.minMinutes,
-        incrementMinutes: session.incrementMinutes,
-      }).amount;
-    }
+    const at =
+      session.status === 'finished'
+        ? new Date(session.endedAt ?? now)
+        : session.status === 'paused'
+          ? new Date(session.pausedAt ?? now)
+          : now;
+    const billing = computeSegmentedSessionBilling({
+      startedAt: session.startedAt,
+      endedAt: at,
+      pauses: session.pauseLog,
+      pausedSeconds: session.pausedSeconds,
+      segments: session.rateSegments,
+      ratePerHour: session.ratePerHour,
+      minMinutes: session.minMinutes,
+      incrementMinutes: session.incrementMinutes,
+      rateName: session.rateSegments[0]?.rateName,
+    });
+    subtotal +=
+      session.status === 'finished' && session.amount !== null
+        ? session.amount
+        : billing.amount;
   }
 
   const activeOrders = await tx

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { DEFAULT_OUTLET_ID } from '@/lib/constants';
+import type { SessionPause, SessionRateSegment } from '@/lib/billing';
 import {
   boolean,
   index,
@@ -450,6 +451,9 @@ export const billiardSessions = pgTable(
     pausedAt: timestamp({ withTimezone: true }),
     pausedSeconds: integer().notNull().default(0),
     targetMinutes: integer(),
+    // Snapshot tarif per rate window + log pause untuk billing lintas happy hour.
+    rateSegments: jsonb().$type<SessionRateSegment[]>().notNull().default([]),
+    pauseLog: jsonb().$type<SessionPause[]>().notNull().default([]),
     endedAt: timestamp({ withTimezone: true }),
     // Snapshot tarif: perubahan master rate tidak mengubah sesi berjalan.
     ratePerHour: integer().notNull(),

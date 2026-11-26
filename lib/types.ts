@@ -8,6 +8,11 @@ import type {
   StationType,
   TableKind,
 } from './db/schema';
+import type {
+  SessionBillingSegment,
+  SessionPause,
+  SessionRateSegment,
+} from './billing';
 
 export type { OrderSource, OrderStatus, PayMethod, ProfileRole } from './db/schema';
 export type RefundCategory = 'billiard' | 'fnb' | 'other';
@@ -36,6 +41,10 @@ export type SessionView = {
   ratePerHour: number;
   minMinutes: number;
   incrementMinutes: number;
+  rateSegments: SessionRateSegment[];
+  pauses: SessionPause[];
+  billingSegments: SessionBillingSegment[];
+  billingMinimumTopUp: number;
   amount: number | null;
   estimate: number;
 };

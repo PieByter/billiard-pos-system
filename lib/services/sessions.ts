@@ -9,14 +9,14 @@ import {
   venueTables,
 } from '@/lib/db/schema';
 import {
-  billableElapsedSeconds,
-  computeSessionAmount,
-  computeSessionAmountFromSeconds,
+  computeSegmentedSessionBilling,
+  type SessionPause,
+  type SessionRateSegment,
 } from '@/lib/billing';
 import { AppError, isUniqueViolation } from '@/lib/errors';
 import { ensureOpenBill, recalcBillTotals } from './bill';
 import { audit } from './audit';
-import { resolveRateForTable } from './rate-schedules';
+import { buildRateTimelineForTable, resolveRateForTable } from './rate-schedules';
 import { hasBillSplits } from './splits';
 
 export async function startBilliardSession(
@@ -37,6 +37,7 @@ export async function startBilliardSession(
     return await db.transaction(async (tx) => {
       const now = await dbNow(tx);
       const resolved = await resolveRateForTable(tx, tableId, now);
+      const rateTimeline = await buildRateTimelineForTable(tx, tableId, now);
       const row = { table: resolved.table, rate: resolved.rate };
       if (row.table.kind !== 'billiard') {
         throw new AppError('WRONG_TABLE_KIND', 'Meja ini bukan meja billiard.');
@@ -83,6 +84,8 @@ export async function startBilliardSession(
           ratePerHour: row.rate.pricePerHour,
           minMinutes: row.rate.minMinutes,
           incrementMinutes: row.rate.incrementMinutes,
+          rateSegments: rateTimeline,
+          pauseLog: [],
           startedBy: staffId,
         })
         .returning();
@@ -105,6 +108,7 @@ export async function startBilliardSession(
           guest: cleanGuest,
           billNumber: bill.billNumber,
           targetMinutes: target,
+          rateSegments: rateTimeline.length,
         },
         at: now,
       });
@@ -143,9 +147,13 @@ export async function pauseBilliardSession(tableId: string, staffId: string) {
     if (!session) throw new AppError('NO_ACTIVE_SESSION', 'Tidak ada sesi billiard aktif.');
     if (session.status === 'paused') return { sessionId: session.id, status: 'paused' as const };
 
+    const pauseLog = [
+      ...(Array.isArray(session.pauseLog) ? session.pauseLog : []),
+      { startAt: now.toISOString(), endAt: null },
+    ];
     await tx
       .update(billiardSessions)
-      .set({ status: 'paused', pausedAt: now })
+      .set({ status: 'paused', pausedAt: now, pauseLog })
       .where(eq(billiardSessions.id, session.id));
     await recalcBillTotals(tx, session.billId, now);
     await audit(tx, {
@@ -180,12 +188,35 @@ export async function resumeBilliardSession(tableId: string, staffId: string) {
     const pausedExtra = session.pausedAt
       ? Math.max(0, Math.floor((now.getTime() - new Date(session.pausedAt).getTime()) / 1000))
       : 0;
+    const pauseLog: SessionPause[] = Array.isArray(session.pauseLog)
+      ? [...session.pauseLog]
+      : [];
+    if (pauseLog.length > 0) {
+      const last = pauseLog[pauseLog.length - 1];
+      if (!last.endAt) last.endAt = now.toISOString();
+    } else if (session.pausedAt) {
+      // Sesi lama tanpa pauseLog: pertahankan pausedSeconds sebelumnya sebagai
+      // perkiraan pause di awal, lalu catat pause yang baru selesai.
+      if (session.pausedSeconds > 0) {
+        pauseLog.push({
+          startAt: new Date(session.startedAt).toISOString(),
+          endAt: new Date(
+            new Date(session.startedAt).getTime() + session.pausedSeconds * 1000,
+          ).toISOString(),
+        });
+      }
+      pauseLog.push({
+        startAt: new Date(session.pausedAt).toISOString(),
+        endAt: now.toISOString(),
+      });
+    }
     await tx
       .update(billiardSessions)
       .set({
         status: 'running',
         pausedAt: null,
         pausedSeconds: session.pausedSeconds + pausedExtra,
+        pauseLog,
       })
       .where(eq(billiardSessions.id, session.id));
     await recalcBillTotals(tx, session.billId, now);
@@ -226,16 +257,30 @@ export async function stopBilliardSession(tableId: string, staffId: string) {
       ? Math.max(0, Math.floor((now.getTime() - new Date(session.pausedAt).getTime()) / 1000))
       : 0;
     const totalPaused = session.pausedSeconds + pausedExtra;
-    const billed = computeSessionAmount(
-      session.startedAt,
-      now,
-      totalPaused,
-      {
-        ratePerHour: session.ratePerHour,
-        minMinutes: session.minMinutes,
-        incrementMinutes: session.incrementMinutes,
-      },
-    );
+    const pauseLog: SessionPause[] = Array.isArray(session.pauseLog)
+      ? [...session.pauseLog]
+      : [];
+    if (session.pausedAt) {
+      if (pauseLog.length > 0 && !pauseLog[pauseLog.length - 1].endAt) {
+        pauseLog[pauseLog.length - 1].endAt = now.toISOString();
+      } else {
+        pauseLog.push({
+          startAt: new Date(session.pausedAt).toISOString(),
+          endAt: now.toISOString(),
+        });
+      }
+    }
+    const billing = computeSegmentedSessionBilling({
+      startedAt: session.startedAt,
+      endedAt: now,
+      pauses: pauseLog,
+      pausedSeconds: totalPaused,
+      segments: session.rateSegments,
+      ratePerHour: session.ratePerHour,
+      minMinutes: session.minMinutes,
+      incrementMinutes: session.incrementMinutes,
+      rateName: session.rateSegments[0]?.rateName,
+    });
 
     await tx
       .update(billiardSessions)
@@ -243,8 +288,9 @@ export async function stopBilliardSession(tableId: string, staffId: string) {
         status: 'finished',
         pausedAt: null,
         pausedSeconds: totalPaused,
+        pauseLog,
         endedAt: now,
-        amount: billed.amount,
+        amount: billing.amount,
         endedBy: staffId,
       })
       .where(eq(billiardSessions.id, session.id));
@@ -255,7 +301,7 @@ export async function stopBilliardSession(tableId: string, staffId: string) {
         id: session.id,
         billId: session.billId,
         targetMinutes: session.targetMinutes,
-        actualMinutes: billed.minutes,
+        actualMinutes: billing.totalActiveMinutes,
         outletId: table?.outletId ?? session.outletId,
         tableCode: table?.code ?? '',
       },
@@ -276,9 +322,14 @@ export async function stopBilliardSession(tableId: string, staffId: string) {
       entityId: session.id,
       detail: {
         table: table?.code,
-        billableMinutes: billed.billableMinutes,
-        amount: billed.amount,
+        billableMinutes: billing.totalBillableMinutes,
+        amount: billing.amount,
         billNumber: bill.billNumber,
+        rateSegments: billing.segments.map((segment) => ({
+          rate: segment.rateName,
+          minutes: segment.activeMinutes,
+          amount: segment.amount,
+        })),
         overtimePenalty: overtimePenalty?.amount ?? 0,
       },
       at: now,
@@ -288,9 +339,11 @@ export async function stopBilliardSession(tableId: string, staffId: string) {
       sessionId: session.id,
       billId: session.billId,
       billNumber: bill.billNumber,
-      amount: billed.amount,
-      billableMinutes: billed.billableMinutes,
+      amount: billing.amount,
+      billableMinutes: billing.totalBillableMinutes,
       billTotal: total,
+      rateSegments: billing.segments,
+      minimumTopUpAmount: billing.minimumTopUpAmount,
       overtimePenalty: overtimePenalty?.amount ?? 0,
       overtimeMinutes: overtimePenalty?.minutes ?? 0,
     };
@@ -523,16 +576,28 @@ export function estimateSessionAt(
     ratePerHour: number;
     minMinutes: number;
     incrementMinutes: number;
+    rateSegments?: SessionRateSegment[];
+    pauseLog?: SessionPause[];
   },
   at: Date,
 ) {
   const extraPause = session.pausedAt
     ? Math.max(0, (at.getTime() - new Date(session.pausedAt).getTime()) / 1000)
     : 0;
-  const seconds = billableElapsedSeconds(
-    session.startedAt,
-    at,
-    session.pausedSeconds + extraPause,
-  );
-  return computeSessionAmountFromSeconds(seconds, session);
+  const billing = computeSegmentedSessionBilling({
+    startedAt: session.startedAt,
+    endedAt: at,
+    pauses: session.pauseLog,
+    pausedSeconds: session.pausedSeconds + extraPause,
+    segments: session.rateSegments,
+    ratePerHour: session.ratePerHour,
+    minMinutes: session.minMinutes,
+    incrementMinutes: session.incrementMinutes,
+  });
+  return {
+    elapsedSeconds: billing.totalActiveSeconds,
+    minutes: billing.totalActiveMinutes,
+    billableMinutes: billing.totalBillableMinutes,
+    amount: billing.amount,
+  };
 }

@@ -1,4 +1,5 @@
 import { and, asc, eq } from 'drizzle-orm';
+import type { SessionRateSegment } from '@/lib/billing';
 import { dbNow, getDb, type DbTransaction } from '@/lib/db';
 import {
   billiardRates,
@@ -47,8 +48,45 @@ export function timeToMinutes(value: string): number {
 export type ResolvedRate = {
   table: VenueTable;
   rate: BilliardRate | null;
+  defaultRate: BilliardRate | null;
   schedule: TableRateSchedule | null;
 };
+
+type RateChoice = {
+  rate: BilliardRate;
+  schedule: TableRateSchedule | null;
+};
+
+function chooseRateForClock(
+  schedules: Array<{ schedule: TableRateSchedule; rate: BilliardRate }>,
+  defaultRate: BilliardRate | null,
+  clock: JakartaClock,
+): RateChoice | null {
+  const matching = schedules
+    .filter(({ schedule, rate }) => {
+      const days = Array.isArray(schedule.daysOfWeek) ? schedule.daysOfWeek : [];
+      return (
+        rate.active &&
+        days.includes(clock.day) &&
+        clock.minutes >= schedule.startMinute &&
+        clock.minutes < schedule.endMinute
+      );
+    })
+    .sort(
+      (a, b) =>
+        b.schedule.priority - a.schedule.priority ||
+        a.schedule.startMinute - b.schedule.startMinute ||
+        a.schedule.id.localeCompare(b.schedule.id),
+    );
+  const chosen = matching[0] ?? null;
+  const rate = chosen?.rate ?? defaultRate;
+  if (!rate) return null;
+  return { rate, schedule: chosen?.schedule ?? null };
+}
+
+function nextMinuteBoundary(value: Date): Date {
+  return new Date(Math.floor(value.getTime() / 60_000) * 60_000 + 60_000);
+}
 
 export async function resolveRateForTable(
   tx: DbTransaction,
@@ -73,30 +111,81 @@ export async function resolveRateForTable(
     .where(and(eq(tableRateSchedules.tableId, tableId), eq(tableRateSchedules.active, true)))
     .orderBy(asc(tableRateSchedules.startMinute));
 
-  const clock = jakartaClock(at);
-  const matching = schedules
-    .filter(({ schedule, rate }) => {
-      const days = Array.isArray(schedule.daysOfWeek) ? schedule.daysOfWeek : [];
-      return (
-        rate.active &&
-        days.includes(clock.day) &&
-        clock.minutes >= schedule.startMinute &&
-        clock.minutes < schedule.endMinute
-      );
-    })
-    .sort(
-      (a, b) =>
-        b.schedule.priority - a.schedule.priority ||
-        a.schedule.startMinute - b.schedule.startMinute ||
-        a.schedule.id.localeCompare(b.schedule.id),
-    );
-
-  const chosen = matching[0] ?? null;
+  const choice = chooseRateForClock(schedules, defaultRate ?? null, jakartaClock(at));
   return {
     table,
-    rate: chosen?.rate ?? defaultRate ?? null,
-    schedule: chosen?.schedule ?? null,
+    rate: choice?.rate ?? null,
+    defaultRate: defaultRate ?? null,
+    schedule: choice?.schedule ?? null,
   };
+}
+
+/**
+ * Snapshot seluruh rate window dari waktu start sampai horizon (default 24 jam).
+ * Batas window mengikuti menit jam dinding, sehingga sesi yang mulai 16:30
+ * otomatis pindah tarif tepat 17:00.
+ */
+export async function buildRateTimelineForTable(
+  tx: DbTransaction,
+  tableId: string,
+  startAt: Date,
+  horizonMinutes = 24 * 60,
+): Promise<SessionRateSegment[]> {
+  const resolved = await resolveRateForTable(tx, tableId, startAt);
+  const fallbackRate = resolved.defaultRate ?? resolved.rate;
+  if (!fallbackRate) return [];
+
+  const schedules = await tx
+    .select({ schedule: tableRateSchedules, rate: billiardRates })
+    .from(tableRateSchedules)
+    .innerJoin(billiardRates, eq(tableRateSchedules.rateId, billiardRates.id))
+    .where(
+      and(
+        eq(tableRateSchedules.tableId, tableId),
+        eq(tableRateSchedules.active, true),
+      ),
+    )
+    .orderBy(asc(tableRateSchedules.startMinute));
+
+  const horizonEnd = startAt.getTime() + Math.max(1, horizonMinutes) * 60_000;
+  const result: Array<SessionRateSegment & { key: string }> = [];
+  let cursor = startAt.getTime();
+  let current: (SessionRateSegment & { key: string }) | null = null;
+
+  while (cursor < horizonEnd) {
+    const cursorDate = new Date(cursor);
+    const segmentEnd = Math.min(nextMinuteBoundary(cursorDate).getTime(), horizonEnd);
+    const choice = chooseRateForClock(schedules, fallbackRate, jakartaClock(cursorDate));
+    const rate = choice?.rate ?? fallbackRate;
+    const key = `${rate.id}:${choice?.schedule?.id ?? 'default'}`;
+    if (!current || current.key !== key) {
+      if (current) current.endAt = cursorDate.toISOString();
+      current = {
+        key,
+        startAt: cursorDate.toISOString(),
+        endAt: new Date(segmentEnd).toISOString(),
+        rateName: rate.name,
+        ratePerHour: rate.pricePerHour,
+        minMinutes: rate.minMinutes,
+        incrementMinutes: rate.incrementMinutes,
+        scheduleId: choice?.schedule?.id ?? null,
+      };
+      result.push(current);
+    } else {
+      current.endAt = new Date(segmentEnd).toISOString();
+    }
+    cursor = segmentEnd;
+  }
+
+  return result.map((segment) => ({
+    startAt: segment.startAt,
+    endAt: segment.endAt,
+    rateName: segment.rateName,
+    ratePerHour: segment.ratePerHour,
+    minMinutes: segment.minMinutes,
+    incrementMinutes: segment.incrementMinutes,
+    scheduleId: segment.scheduleId,
+  }));
 }
 
 export async function previewRateForTable(tableId: string) {

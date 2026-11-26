@@ -49,13 +49,13 @@ worker).
 - **Satu bill per meja** (bukan per order/sesi). Billiard + F&B bergabung di satu bill.
 - **Partial unique index** mencegah dua sesi aktif / dua open bill per meja — race condition ditolak
   oleh Postgres, bukan kode aplikasi.
-- **Billing integer rupiah**, snapshot tarif saat start, min duration + increment + pembulatan Rp500.
+- **Billing integer rupiah**, snapshot tarif per segmen saat start, min duration + increment + pembulatan Rp500.
 - **Waktu dari Postgres** (`now()`), bukan jam client.
 - **Idempotency** pada order (unique key) dan payment webhook (`external_ref`).
 - **Stok atomik** (`stock >= qty` di dalam `UPDATE`) sehingga tidak oversell.
 - **Refund append-only** per payment; laporan dan expected cash shift memakai nilai neto setelah refund.
 - **Snapshot venue settings**: perubahan PB1/service hanya berlaku untuk bill baru.
-- **Tarif otomatis per jadwal**: `table_rate_schedules` memilih rate berdasarkan hari/jam Asia/Jakarta dan prioritas; tarif di-snapshot saat start.
+- **Tarif otomatis per jadwal**: `table_rate_schedules` memilih rate berdasarkan hari/jam Asia/Jakarta dan prioritas. Timeline tarif di-snapshot saat start; sesi yang melewati jam happy hour otomatis dihitung per segmen.
 - **Reservasi & waitlist**: cek overlap, deposit tercatat, check-in membuat bill/sesi; waitlist walk-in terpisah.
 - **Split bill per item/sesi**: group pembayaran parsial; bill baru ditutup setelah semua group lunas.
 - **QRIS dinamis**: create-charge via gateway (mock/Midtrans/Xendit), QR display, polling status, webhook auto-settlement.
@@ -285,10 +285,14 @@ const signature = createHmac('sha256', process.env.PAYMENT_WEBHOOK_SECRET)
 
 ### Bill & billing
 - Satu **bill** per meja; sesi billiard dan order F&B menjadi line item di bill yang sama.
-- Tarif di-snapshot saat start (`rate_per_hour`, `min_minutes`, `increment_minutes`). Perubahan master
-  tarif tidak mengubah sesi berjalan.
-- Pause mengurangi waktu tagih. Saat stop, pause berjalan ikut dihitung.
-- Rumus: `elapsed → ceil menit → max(min, ceil(increment)) → amount = billable/60 × rate → round Rp500`.
+- Saat start, sistem menyimpan **timeline tarif** (`rate_segments`) dari jadwal meja. Perubahan master
+  jadwal tidak mengubah sesi berjalan.
+- Sesi yang melewati batas jadwal—misalnya mulai 16:30 lalu melewati pukul 17:00—dihitung per segmen:
+  16:30–17:00 memakai tarif happy hour, 17:00–selesai memakai tarif berikutnya.
+- Pause disimpan sebagai interval (`pause_log`), sehingga pause setelah batas tarif tidak ikut dihitung
+  sebagai waktu happy hour.
+- Rumus total: tiap segmen `ceil menit aktif × tarif/60`; total menit dibulatkan ke `min/increment` tarif
+  awal; sisa minimum dibebankan ke tarif segmen pertama; total akhir dibulatkan Rp500.
 - Diskon (owner) mengurangi dasar PB1 & service. PB1 default 10%, service 5% (bisa diubah di row
   `bills`/seed).
 - Split bill = beberapa row `payments` dengan metode berbeda, total harus sama dengan total bill.
@@ -369,7 +373,7 @@ public/                         # manifest, sw.js, icons
 | Realtime | Postgres Changes + polling fallback. Tidak ada policy `anon`. |
 | Cetak | `window.print()` 80mm + print queue ESC/POS. Agent lokal/WebUSB mengambil job; hardware belum diuji. |
 | QRIS | Manual-confirm di kasir + webhook gateway opsional. Tidak memaksa bayar di muka. |
-| Tarif peak/off-peak | Model tarif per meja. Slot jam dapat dibuat sebagai rate terpisah dan di-assign ke meja; belum ada auto-switch tarif di tengah sesi (snapshot rate). |
+| Tarif peak/off-peak | Model tarif per meja + jadwal hari/jam. Timeline tarif di-snapshot saat start dan sesi dihitung per segmen saat melewati batas jadwal. |
 | Split bill | Per metode bayar dan per item/sesi, termasuk QRIS gateway per group. |
 | Stock | Opsional per menu (`stock = null` = tak dilacak) + bahan/resep/PO/opname. |
 | Multi-outlet | `outlet_id` di seluruh tabel; scoping server-side + outlet switcher. RLS template belum diaktifkan default. |
@@ -428,6 +432,8 @@ Implementasi dan batasan detail ada di **`docs/advanced-features.md`**. Sisa pek
 - [ ] Staff: tambah staff → login; nonaktifkan → login ditolak; owner terakhir tidak bisa dinonaktifkan.
 - [ ] Settings: ubah PB1/service → hanya bill baru berubah; bill berjalan tetap snapshot lama.
 - [ ] Jadwal tarif: buat jadwal aktif sekarang → dialog start menampilkan tarif jadwal; start sesi memakai tarif itu.
+- [ ] Sesi mulai sebelum happy hour dan lanjut melewati batas → bill menampilkan dua segmen tarif dan total berubah otomatis.
+- [ ] Pause melewati batas tarif → waktu pause tidak dibebankan ke tarif happy hour.
 - [ ] Jadwal overlap → prioritas tertinggi menang; nonaktifkan jadwal → fallback ke tarif default.
 - [ ] Reservasi: buat booking → konflik jadwal ditolak; check-in membuat bill/sesi; no-show/cancel tercatat.
 - [ ] Waitlist: tambah → panggil → duduk; status dan waktu tercatat.

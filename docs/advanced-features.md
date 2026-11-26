@@ -11,6 +11,17 @@ Dokumen ini mencatat implementasi batch lanjutan, konfigurasi yang dibutuhkan, d
 - **RLS:** template ada di `docs/rls-outlets.sql`. Aplikasi saat ini memakai scoping server-side. Jangan aktifkan RLS template sebelum setiap request men-set `app.outlet_id`; jika tidak, semua query akan tertolak.
 - Batasan: belum ada laporan agregat lintas outlet; owner harus berpindah outlet.
 
+## 1b. Billing tarif per segmen (happy hour → normal)
+- Saat sesi dimulai, sistem menyimpan timeline tarif 24 jam (`billiard_sessions.rate_segments`) berdasarkan jadwal meja dan prioritas.
+- Sesi yang melewati batas jadwal dihitung per segmen. Contoh mulai 16:30 dengan happy hour berakhir 17:00:
+  - 16:30–17:00 × tarif happy hour
+  - 17:00–selesai × tarif normal
+- Pause disimpan sebagai interval (`pause_log`), jadi pause setelah 17:00 tidak dihitung sebagai waktu happy hour.
+- `minMinutes`/`incrementMinutes` diterapkan pada total sesi memakai tarif segmen pertama; kekurangan minimum dibebankan ke tarif pertama. Total dibulatkan Rp500.
+- Breakdown segmen tampil di BillPanel dan struk.
+- Perubahan jadwal setelah sesi mulai tidak mengubah sesi berjalan karena timeline sudah snapshot.
+- Rate window mengikuti timezone `Asia/Jakarta`, bukan jam browser.
+
 ## 2. Offline write queue
 - Order kasir dan self-order tamu disimpan di IndexedDB saat offline atau saat server action gagal karena jaringan.
 - Replay otomatis saat `online`, memakai `idempotencyKey` yang sama sehingga tidak menghasilkan order ganda.

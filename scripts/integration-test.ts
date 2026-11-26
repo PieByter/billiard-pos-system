@@ -1,6 +1,7 @@
 import { rmSync } from 'node:fs';
 import path from 'node:path';
 import { and, eq } from 'drizzle-orm';
+import { computeSegmentedSessionBilling } from '../lib/billing';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`ASSERT FAILED: ${message}`);
@@ -37,9 +38,12 @@ async function main() {
     setReservationStatus,
     setWaitlistStatus,
   } = await import('../lib/services/reservations');
-  const { saveRateSchedule, previewRateForTable, toggleRateSchedule } = await import(
-    '../lib/services/rate-schedules'
-  );
+  const {
+    saveRateSchedule,
+    previewRateForTable,
+    toggleRateSchedule,
+    buildRateTimelineForTable,
+  } = await import('../lib/services/rate-schedules');
   const { createBillSplits, payBillSplit } = await import('../lib/services/splits');
   const {
     createBillQrisIntent,
@@ -375,6 +379,95 @@ async function main() {
   assert(preview.scheduleId === schedule.id, 'jadwal tarif aktif terdeteksi');
   assert(preview.rate?.id === privateRate.id, 'rate jadwal dipakai untuk preview');
   await toggleRateSchedule(owner.id, schedule.id);
+
+  /* ------------------- Timeline tarif lintas happy hour ------------------ */
+  const [b7Table] = await db
+    .select()
+    .from(schema.venueTables)
+    .where(eq(schema.venueTables.code, 'B7'))
+    .limit(1);
+  assert(b7Table, 'meja B7 tersedia untuk timeline tarif');
+  const timelineStart = new Date('2026-11-26T09:00:00.000Z'); // 16:00 WIB
+  const timeline = await db.transaction((tx) =>
+    buildRateTimelineForTable(tx, b7Table.id, timelineStart),
+  );
+  assert(timeline.length >= 2, 'timeline tarif punya beberapa segmen');
+  assert(timeline[0].ratePerHour === 45_000, 'sebelum 17:00 memakai tarif happy hour');
+  assert(
+    timeline[0].endAt === '2026-11-26T10:00:00.000Z',
+    'segmen happy hour berakhir tepat 17:00 WIB',
+  );
+  assert(timeline[1].ratePerHour === 60_000, 'setelah 17:00 tarif otomatis berubah');
+
+  const [b4Table] = await db
+    .select()
+    .from(schema.venueTables)
+    .where(eq(schema.venueTables.code, 'B4'))
+    .limit(1);
+  assert(b4Table, 'meja B4 tersedia untuk billing segmen');
+  const segmentedStart = await startBilliardSession(
+    b4Table.id,
+    cashier.id,
+    'Segmented Billing Guest',
+  );
+  const segmentBase = Date.now();
+  const customSegments = [
+    {
+      startAt: new Date(segmentBase - 40 * 60_000).toISOString(),
+      endAt: new Date(segmentBase - 10 * 60_000).toISOString(),
+      rateName: 'Happy Hour',
+      ratePerHour: 45_000,
+      minMinutes: 30,
+      incrementMinutes: 15,
+      scheduleId: null,
+    },
+    {
+      startAt: new Date(segmentBase - 10 * 60_000).toISOString(),
+      endAt: new Date(segmentBase + 24 * 60 * 60_000).toISOString(),
+      rateName: 'VIP',
+      ratePerHour: 60_000,
+      minMinutes: 30,
+      incrementMinutes: 15,
+      scheduleId: null,
+    },
+  ];
+  await db
+    .update(schema.billiardSessions)
+    .set({
+      startedAt: new Date(segmentBase - 40 * 60_000),
+      ratePerHour: 45_000,
+      minMinutes: 30,
+      incrementMinutes: 15,
+      rateSegments: customSegments,
+      pauseLog: [],
+    })
+    .where(eq(schema.billiardSessions.id, segmentedStart.sessionId));
+  const segmentedStop = await stopBilliardSession(b4Table.id, cashier.id);
+  assert(segmentedStop.rateSegments.length === 2, 'stop sesi menyimpan dua rate segment');
+  assert(segmentedStop.rateSegments[0].rateName === 'Happy Hour', 'segmen 1 tarif happy hour');
+  assert(segmentedStop.rateSegments[1].rateName === 'VIP', 'segmen 2 tarif VIP');
+  const [segmentedSessionRow] = await db
+    .select()
+    .from(schema.billiardSessions)
+    .where(eq(schema.billiardSessions.id, segmentedStart.sessionId))
+    .limit(1);
+  assert(segmentedSessionRow?.endedAt, 'sesi segmented selesai');
+  const segmentedExpected = computeSegmentedSessionBilling({
+    startedAt: segmentedSessionRow.startedAt,
+    endedAt: segmentedSessionRow.endedAt,
+    pauses: segmentedSessionRow.pauseLog,
+    segments: segmentedSessionRow.rateSegments,
+    ratePerHour: segmentedSessionRow.ratePerHour,
+    minMinutes: segmentedSessionRow.minMinutes,
+    incrementMinutes: segmentedSessionRow.incrementMinutes,
+  });
+  assert(
+    segmentedStop.amount === segmentedExpected.amount,
+    'amount stop sama dengan billing segmented',
+  );
+  await payBill(segmentedStart.billId, cashier.id, [
+    { method: 'cash', amount: segmentedStop.billTotal, tendered: segmentedStop.billTotal },
+  ]);
 
   /* ------------------------------ Split bill ----------------------------- */
   const splitStart = await startBilliardSession(billiardTable.id, cashier.id, 'Split Guest');

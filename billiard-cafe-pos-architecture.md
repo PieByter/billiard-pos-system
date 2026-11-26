@@ -317,7 +317,7 @@ export async function cashierOrder(tableId: string, input: OrderInput) {
 | **Internet cafe mati** | Kasir tidak bisa transaksi. Minimal: PWA + cache menu read-only, dan SOP manual tertulis. Offline-first penuh (queue + rekonsiliasi) mahal, jangan dibangun di v1. |
 | **Printer thermal** | Vercel tidak bisa menjangkau printer di LAN. Opsi: `window.print()` dengan CSS 58/80mm, Web Bluetooth/WebUSB ESC/POS dari browser kasir, atau print agent lokal. Pilih salah satu sejak awal. |
 | **Void/diskon tanpa jejak** (sumber kebocoran kasir) | `audit_log` append-only, void dan diskon butuh role `owner` atau PIN supervisor. |
-| **Tarif berubah di tengah sesi** | Sudah ditangani lewat snapshot tarif di sesi. Tarif per jam (peak/off-peak) butuh tabel segmen. Itu keputusan produk, bukan teknis. |
+| **Tarif berubah di tengah sesi** | Ditangani dengan snapshot timeline tarif per segmen (`rate_segments`) + `pause_log`. Sesi yang melewati happy hour dihitung per segmen. |
 | **Realtime customer** | Jangan beri policy `anon` ke Postgres Changes. Untuk status order customer, polling 5 detik atau Broadcast dari server sudah cukup. Realtime Postgres Changes hanya untuk layar staff. |
 
 ---
@@ -418,7 +418,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 **Implementasi v1.1:** `/staff/admin/staff` dan `/staff/admin/settings`, `lib/services/staff.ts`, `lib/services/settings.ts`, `venue_settings` (PB1/service/warning/footer), provisioning Supabase Auth via service role, snapshot pajak/service di `ensureOpenBill`. Invite email dan jam buka/tutup belum.
 
 #### 3. Peak/off-peak rate otomatis
-**Status:** selesai sebagian (v1.1; holiday override belum) · **Prioritas:** P1 · **Dependensi:** #2 settings
+**Status:** selesai (v1.3; termasuk billing lintas segmen/happy hour; holiday override belum) · **Prioritas:** P1 · **Dependensi:** #2 settings
 
 **Masalah:** `billiard_rates` masih satu tarif per meja. “Happy Hour” hanya nama rate yang di-assign manual, belum otomatis berdasarkan jam/hari.
 
@@ -426,18 +426,21 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Jadwal tarif per meja: hari dalam minggu, jam mulai/selesai, rate, prioritas, aktif.
 - Resolusi tarif saat `startSession` memakai timezone `Asia/Jakarta`; fallback ke `venue_tables.rateId`.
 - Preview tarif yang akan dipakai di dialog start.
-- Snapshot tarif tetap berlaku selama sesi; perubahan jadwal tidak mengubah sesi berjalan.
+- Timeline tarif di-snapshot saat start; perubahan jadwal tidak mengubah sesi berjalan.
+- Sesi yang melewati batas jadwal dihitung per segmen (happy hour → normal) tanpa perlu stop/start.
+- Pause dicatat per interval agar tidak salah tarif saat melewati batas.
 - Dukungan override hari libur (opsional fase berikutnya).
 
 **Acceptance criteria:**
 - Sesi yang mulai 16:59 dan 17:01 memakai rate yang benar pada batas jadwal.
-- Dua jadwal overlap ditolak atau diselesaikan oleh prioritas yang eksplisit.
-- Tidak ada perubahan tarif di tengah sesi.
-- Unit test resolusi jadwal + integration test start sesi.
+- Sesi yang mulai 16:30 dan berlanjut setelah 17:00 menghasilkan dua segmen tarif dan total otomatis berubah.
+- Dua jadwal overlap diselesaikan oleh prioritas yang eksplisit.
+- Pause setelah batas tarif tidak dibebankan ke tarif happy hour.
+- Unit test resolusi jadwal + billing segmen; integration test timeline & stop sesi.
 
-**Dampak skema:** tabel `table_rate_schedules` (`tableId`, `rateId`, `daysOfWeek`, `startMinute`, `endMinute`, `priority`, `active`).
+**Dampak skema:** tabel `table_rate_schedules`; snapshot `billiard_sessions.rate_segments` + `pause_log`.
 
-**Implementasi v1.1:** `/staff/admin/schedules`, `lib/services/rate-schedules.ts`, `resolveRateForTable` dipakai `startBilliardSession`, preview tarif di dialog start, seed B7 17:00–23:00. Jadwal lintas tengah malam dan override hari libur belum.
+**Implementasi v1.3:** `/staff/admin/schedules`, `lib/services/rate-schedules.ts` (`buildRateTimelineForTable`), billing segmen di `lib/billing.ts`, `startBilliardSession` menyimpan timeline, `stopBilliardSession` menghitung per segmen, breakdown tampil di BillPanel/struk. Seed B7 17:00–23:00. Jadwal lintas tengah malam dan override hari libur belum.
 
 #### 4. Reservation & waitlist
 **Status:** selesai sebagian (v1.1; deposit belum masuk ledger payment) · **Prioritas:** P1 · **Dependensi:** #2, #3

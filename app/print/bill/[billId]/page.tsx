@@ -84,6 +84,24 @@ export default async function BillPrintPage({
               Min {session.minMinutes}m · increment {session.incrementMinutes}m · pause{' '}
               {Math.round(session.pausedSeconds / 60)}m
             </div>
+            {session.billingSegments.length > 1 ? (
+              <div className="mt-0.5 space-y-0.5 border-t border-dashed border-black/30 pt-0.5">
+                {session.billingSegments.map((segment, segmentIndex) => (
+                  <div key={`${segment.startAt}-${segment.rateName}`} className="flex justify-between gap-2 text-[8.5px]">
+                    <span>
+                      Sesi {segmentIndex + 1} · {segment.rateName} · {segment.activeMinutes}m
+                    </span>
+                    <span>{formatRp(segment.amount)}</span>
+                  </div>
+                ))}
+                {session.billingMinimumTopUp > 0 ? (
+                  <div className="flex justify-between gap-2 text-[8.5px]">
+                    <span>Penyesuaian minimum</span>
+                    <span>{formatRp(session.billingMinimumTopUp)}</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ))}
 

@@ -69,6 +69,246 @@ export function computeSessionAmount(
   );
 }
 
+/** Snapshot tarif per segmen waktu, dibuat saat sesi dimulai. */
+export type SessionRateSegment = {
+  startAt: string;
+  endAt: string;
+  rateName: string;
+  ratePerHour: number;
+  minMinutes: number;
+  incrementMinutes: number;
+  scheduleId: string | null;
+};
+
+export type SessionPause = {
+  startAt: string;
+  endAt: string | null;
+};
+
+export type SessionBillingSegment = {
+  startAt: string;
+  endAt: string;
+  rateName: string;
+  ratePerHour: number;
+  activeSeconds: number;
+  activeMinutes: number;
+  amount: number;
+};
+
+export type SegmentedSessionBilling = {
+  amount: number;
+  totalActiveSeconds: number;
+  totalActiveMinutes: number;
+  totalBillableMinutes: number;
+  minimumTopUpAmount: number;
+  roundingAdjustment: number;
+  segments: SessionBillingSegment[];
+};
+
+type Interval = { start: number; end: number };
+
+function mergeIntervals(intervals: Interval[]): Interval[] {
+  const sorted = intervals
+    .filter((interval) => interval.end > interval.start)
+    .sort((a, b) => a.start - b.start);
+  const merged: Interval[] = [];
+  for (const interval of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && interval.start <= last.end) {
+      last.end = Math.max(last.end, interval.end);
+    } else {
+      merged.push({ ...interval });
+    }
+  }
+  return merged;
+}
+
+function overlapSeconds(intervals: Interval[], start: number, end: number): number {
+  let total = 0;
+  for (const interval of intervals) {
+    const overlap = Math.min(end, interval.end) - Math.max(start, interval.start);
+    if (overlap > 0) total += overlap;
+  }
+  return Math.floor(total / 1000);
+}
+
+/**
+ * Billing sesi yang melewati beberapa rate window.
+ *
+ * Aturan:
+ * - waktu aktif dipotong pause per interval;
+ * - tiap segmen dibulatkan ke menit penuh (ceil), seperti billing lama;
+ * - minimum durasi & increment diterapkan pada total sesi, kekurangannya
+ *   dibebankan pada tarif segmen pertama;
+ * - total akhir dibulatkan ke Rp500 terdekat.
+ */
+export function computeSegmentedSessionBilling(input: {
+  startedAt: Date | string;
+  endedAt: Date | string;
+  pauses?: SessionPause[] | null;
+  pausedSeconds?: number;
+  segments?: SessionRateSegment[] | null;
+  ratePerHour: number;
+  minMinutes: number;
+  incrementMinutes: number;
+  rateName?: string;
+}): SegmentedSessionBilling {
+  const startMs = new Date(input.startedAt).getTime();
+  const endMs = new Date(input.endedAt).getTime();
+  const empty: SegmentedSessionBilling = {
+    amount: 0,
+    totalActiveSeconds: 0,
+    totalActiveMinutes: 0,
+    totalBillableMinutes: 0,
+    minimumTopUpAmount: 0,
+    roundingAdjustment: 0,
+    segments: [],
+  };
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+    return empty;
+  }
+
+  const fallbackRateName = input.rateName ?? 'Tarif meja';
+  const sourceSegments: SessionRateSegment[] = [];
+  const rawSegments = (input.segments ?? [])
+    .map((segment) => ({ ...segment }))
+    .filter((segment) => {
+      const segmentStart = Math.max(startMs, new Date(segment.startAt).getTime());
+      const segmentEnd = Math.min(endMs, new Date(segment.endAt).getTime());
+      return Number.isFinite(segmentStart) && Number.isFinite(segmentEnd) && segmentEnd > segmentStart;
+    })
+    .sort(
+      (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
+    );
+
+  if (rawSegments.length === 0) {
+    sourceSegments.push({
+      startAt: new Date(startMs).toISOString(),
+      endAt: new Date(endMs).toISOString(),
+      rateName: fallbackRateName,
+      ratePerHour: input.ratePerHour,
+      minMinutes: input.minMinutes,
+      incrementMinutes: input.incrementMinutes,
+      scheduleId: null,
+    });
+  } else {
+    const firstStart = new Date(rawSegments[0].startAt).getTime();
+    if (firstStart > startMs) {
+      sourceSegments.push({
+        ...rawSegments[0],
+        startAt: new Date(startMs).toISOString(),
+        endAt: new Date(firstStart).toISOString(),
+      });
+    }
+    for (const segment of rawSegments) {
+      sourceSegments.push(segment);
+    }
+    const last = sourceSegments[sourceSegments.length - 1];
+    const lastEnd = new Date(last.endAt).getTime();
+    if (lastEnd < endMs) {
+      // Sesi melewati horizon snapshot: lanjutkan tarif segmen terakhir.
+      last.endAt = new Date(endMs).toISOString();
+    }
+  }
+
+  const pauseIntervals: Interval[] = [];
+  for (const pause of input.pauses ?? []) {
+    const pauseStart = Math.max(startMs, new Date(pause.startAt).getTime());
+    const pauseEnd = Math.min(
+      endMs,
+      pause.endAt ? new Date(pause.endAt).getTime() : endMs,
+    );
+    if (Number.isFinite(pauseStart) && Number.isFinite(pauseEnd) && pauseEnd > pauseStart) {
+      pauseIntervals.push({ start: pauseStart, end: pauseEnd });
+    }
+  }
+  if (pauseIntervals.length === 0 && (input.pausedSeconds ?? 0) > 0) {
+    // Data lama tidak menyimpan kapan pause terjadi; anggap pause di akhir sesi.
+    const pausedMs = Math.max(0, (input.pausedSeconds ?? 0) * 1000);
+    const pauseStart = Math.max(startMs, endMs - pausedMs);
+    if (endMs > pauseStart) pauseIntervals.push({ start: pauseStart, end: endMs });
+  }
+
+  const mergedPauses = mergeIntervals(pauseIntervals);
+  const activeIntervals: Interval[] = [];
+  let cursor = startMs;
+  for (const pause of mergedPauses) {
+    if (pause.start > cursor) activeIntervals.push({ start: cursor, end: pause.start });
+    cursor = Math.max(cursor, pause.end);
+  }
+  if (cursor < endMs) activeIntervals.push({ start: cursor, end: endMs });
+  if (activeIntervals.length === 0) return empty;
+
+  const roundedSegments = sourceSegments
+    .map((segment) => {
+      const segmentStart = new Date(segment.startAt).getTime();
+      const segmentEnd = new Date(segment.endAt).getTime();
+      const activeSeconds = overlapSeconds(activeIntervals, segmentStart, segmentEnd);
+      const activeMinutes = Math.ceil(activeSeconds / 60);
+      if (activeMinutes <= 0) return null;
+      return {
+        startAt: segment.startAt,
+        endAt: segment.endAt,
+        rateName: segment.rateName,
+        ratePerHour: segment.ratePerHour,
+        activeSeconds,
+        activeMinutes,
+        amount: Math.round((activeMinutes * segment.ratePerHour) / 60),
+      };
+    })
+    .filter((segment): segment is SessionBillingSegment => Boolean(segment));
+
+  if (roundedSegments.length === 0) {
+    // Sesi berhenti < 1 detik / seluruhnya pause tetap kena minimum durasi,
+    // sama seperti billing lama yang selalu menerapkan minMinutes.
+    const first = sourceSegments[0];
+    roundedSegments.push({
+      startAt: first.startAt,
+      endAt: first.endAt,
+      rateName: first.rateName,
+      ratePerHour: first.ratePerHour,
+      activeSeconds: 0,
+      activeMinutes: 0,
+      amount: 0,
+    });
+  }
+
+  const totalActiveSeconds = roundedSegments.reduce(
+    (sum, segment) => sum + segment.activeSeconds,
+    0,
+  );
+  const totalActiveMinutes = roundedSegments.reduce(
+    (sum, segment) => sum + segment.activeMinutes,
+    0,
+  );
+  const increment = Math.max(1, input.incrementMinutes);
+  const totalBillableMinutes = Math.max(
+    input.minMinutes,
+    Math.ceil(totalActiveMinutes / increment) * increment,
+  );
+  const extraMinutes = Math.max(0, totalBillableMinutes - totalActiveMinutes);
+  const firstRate = sourceSegments[0]?.ratePerHour ?? input.ratePerHour;
+  const minimumTopUpAmount = Math.round((extraMinutes * firstRate) / 60);
+  const rawTotal =
+    roundedSegments.reduce((sum, segment) => sum + (segment.activeMinutes * segment.ratePerHour) / 60, 0) +
+    (extraMinutes * firstRate) / 60;
+  const amount = Math.max(0, Math.round(rawTotal / 500) * 500);
+  const roundedSum =
+    roundedSegments.reduce((sum, segment) => sum + segment.amount, 0) + minimumTopUpAmount;
+  const roundingAdjustment = amount - roundedSum;
+  roundedSegments[roundedSegments.length - 1].amount += roundingAdjustment;
+
+  return {
+    amount,
+    totalActiveSeconds,
+    totalActiveMinutes,
+    totalBillableMinutes,
+    minimumTopUpAmount,
+    roundingAdjustment,
+    segments: roundedSegments,
+  };
+}
+
 /**
  * Subtotal + pajak + service. Diskon mengurangi dasar pengenaan pajak.
  * PB1 default 10% (1000 bps), service 5% (500 bps).

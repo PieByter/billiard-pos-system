@@ -3,25 +3,48 @@
 import { useMemo } from 'react';
 import {
   computeBillTotals,
-  computeSessionAmountFromSeconds,
+  computeSegmentedSessionBilling,
   formatDuration,
 } from '@/lib/billing';
 import { formatRp } from '@/lib/format';
 import type { BillView, SessionView } from '@/lib/types';
 import { useLiveSeconds } from '@/components/live/live';
 
-export function useLiveSessionValue(session: SessionView | null) {
+export function useLiveSessionBilling(session: SessionView | null) {
   const running = session?.status === 'running';
   const seconds = useLiveSeconds(session?.baseElapsedSeconds ?? 0, running);
-  const amount = useMemo(() => {
-    if (!session) return 0;
-    if (session.status === 'finished') return session.amount ?? session.estimate;
-    return computeSessionAmountFromSeconds(seconds, {
+  const billing = useMemo(() => {
+    if (!session) return null;
+    const startMs = new Date(session.startedAt).getTime();
+    const at =
+      session.status === 'finished'
+        ? new Date(session.endedAt ?? session.startedAt).toISOString()
+        : session.status === 'paused'
+          ? new Date(session.pausedAt ?? session.startedAt).toISOString()
+          : new Date(
+              startMs +
+                (session.baseElapsedSeconds + session.pausedSeconds + seconds) * 1000,
+            ).toISOString();
+    return computeSegmentedSessionBilling({
+      startedAt: session.startedAt,
+      endedAt: at,
+      pauses: session.pauses,
+      segments: session.rateSegments,
       ratePerHour: session.ratePerHour,
       minMinutes: session.minMinutes,
       incrementMinutes: session.incrementMinutes,
-    }).amount;
+      rateName: session.rateSegments[0]?.rateName,
+    });
   }, [session, seconds]);
+  const amount =
+    session?.status === 'finished'
+      ? (session.amount ?? billing?.amount ?? 0)
+      : (billing?.amount ?? 0);
+  return { seconds, amount, billing };
+}
+
+export function useLiveSessionValue(session: SessionView | null) {
+  const { seconds, amount } = useLiveSessionBilling(session);
   return { seconds, amount };
 }
 
@@ -47,20 +70,12 @@ export function LiveSessionValue({
 
 export function useLiveBillTotals(bill: BillView) {
   const active = bill.activeSession;
-  const running = active?.status === 'running';
-  const seconds = useLiveSeconds(active?.baseElapsedSeconds ?? 0, running);
+  const { seconds, amount: liveSession } = useLiveSessionBilling(active);
   const finishedSessions = bill.sessions.filter((session) => session.status === 'finished');
   const finishedTotal = finishedSessions.reduce(
     (sum, session) => sum + (session.amount ?? session.estimate),
     0,
   );
-  const liveSession = active
-    ? computeSessionAmountFromSeconds(seconds, {
-        ratePerHour: active.ratePerHour,
-        minMinutes: active.minMinutes,
-        incrementMinutes: active.incrementMinutes,
-      }).amount
-    : 0;
   const sessionSubtotal = finishedTotal + liveSession;
   const totals = computeBillTotals({
     subtotal: sessionSubtotal + bill.ordersSubtotal,
