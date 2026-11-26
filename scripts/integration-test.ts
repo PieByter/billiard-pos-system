@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs';
 import path from 'node:path';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`ASSERT FAILED: ${message}`);
@@ -23,7 +23,7 @@ async function main() {
     resumeBilliardSession,
     markTableReady,
   } = await import('../lib/services/sessions');
-  const { placeOrder, approveOrder, markStationReady, markOrderServed } = await import(
+  const { placeOrder, approveOrder, markStationReady, markOrderServed, rejectOrder } = await import(
     '../lib/services/orders'
   );
   const { payBill, applyBillDiscount, voidBill } = await import('../lib/services/payments');
@@ -125,6 +125,26 @@ async function main() {
     .where(eq(schema.ingredients.id, testIngredient.id))
     .limit(1);
   assert(ingredientAfterOrder?.stockQty === 98, 'resep memotong stok bahan atomik');
+
+  const rejectCandidate = await placeOrder({
+    actor: { type: 'customer' },
+    tableId: cafe.id,
+    idempotencyKey: crypto.randomUUID(),
+    items: [{ menuItemId: wings.id, qty: 1 }],
+  });
+  await rejectOrder(rejectCandidate.orderId, cashier.id, 'Integration restore test');
+  const [ingredientAfterReject] = await db
+    .select()
+    .from(schema.ingredients)
+    .where(eq(schema.ingredients.id, testIngredient.id))
+    .limit(1);
+  assert(ingredientAfterReject?.stockQty === 98, 'reject order mengembalikan stok bahan');
+  const [rejectBill] = await db
+    .select({ id: schema.bills.id })
+    .from(schema.bills)
+    .where(and(eq(schema.bills.tableId, cafe.id), eq(schema.bills.status, 'open')))
+    .limit(1);
+  if (rejectBill) await db.delete(schema.bills).where(eq(schema.bills.id, rejectBill.id));
 
   let voidBlocked = false;
   try {

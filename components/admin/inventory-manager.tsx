@@ -196,7 +196,12 @@ export function InventoryManager({ data }: { data: InventoryData }) {
                 </p>
               </div>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon-sm" onClick={() => openEdit(ingredient)}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => openEdit(ingredient)}
+                  aria-label={`Edit bahan ${ingredient.name}`}
+                >
                   <Icon name="edit" className="text-[16px]" />
                 </Button>
                 <Button
@@ -209,6 +214,7 @@ export function InventoryManager({ data }: { data: InventoryData }) {
                     setAdjustNote('');
                     setError(null);
                   }}
+                  aria-label={`Adjust stok ${ingredient.name}`}
                 >
                   <Icon name="tune" className="text-[16px]" />
                 </Button>
@@ -386,9 +392,13 @@ export function InventoryManager({ data }: { data: InventoryData }) {
           <Input
             label="Jumlah"
             type="number"
-            min={1}
+            min={adjustType === 'opname' ? 0 : 1}
             value={adjustQty}
-            onChange={(event) => setAdjustQty(Math.max(1, Number(event.target.value) || 1))}
+            onChange={(event) =>
+              setAdjustQty(
+                Math.max(adjustType === 'opname' ? 0 : 1, Number(event.target.value) || 0),
+              )
+            }
             hint={adjusting ? `${adjusting.unit}` : undefined}
           />
           <Input label="Catatan" value={adjustNote} onChange={(event) => setAdjustNote(event.target.value)} />

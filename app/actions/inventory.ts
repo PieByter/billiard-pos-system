@@ -48,7 +48,7 @@ export async function adjustStockAction(input: {
       z.object({
         ingredientId: z.string().uuid(),
         type: z.enum(['in', 'adjust', 'waste', 'opname']),
-        qty: z.coerce.number().int().min(1).max(1_000_000_000),
+        qty: z.coerce.number().int().min(0).max(1_000_000_000),
         note: z.string().max(240).optional().nullable(),
       }),
       input,

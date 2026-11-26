@@ -103,8 +103,7 @@ export async function getAdminData(): Promise<AdminData> {
       .select()
       .from(cashMovements)
       .where(gte(cashMovements.createdAt, since))
-      .orderBy(desc(cashMovements.createdAt))
-      .limit(50),
+      .orderBy(desc(cashMovements.createdAt)),
     db
       .select({
         amount: sql<number>`coalesce(sum(${billiardSessions.amount}),0)::int`,

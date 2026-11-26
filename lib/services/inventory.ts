@@ -30,6 +30,12 @@ export async function saveIngredient(staffId: string, input: IngredientInput) {
   return db.transaction(async (tx) => {
     const now = await dbNow(tx);
     if (input.id) {
+      const [before] = await tx
+        .select()
+        .from(ingredients)
+        .where(eq(ingredients.id, input.id))
+        .limit(1);
+      if (!before) throw new AppError('INGREDIENT_NOT_FOUND', 'Bahan tidak ditemukan.');
       const [updated] = await tx
         .update(ingredients)
         .set({
@@ -44,6 +50,17 @@ export async function saveIngredient(staffId: string, input: IngredientInput) {
         .where(eq(ingredients.id, input.id))
         .returning();
       if (!updated) throw new AppError('INGREDIENT_NOT_FOUND', 'Bahan tidak ditemukan.');
+      if (updated.stockQty !== before.stockQty) {
+        await tx.insert(stockMovements).values({
+          ingredientId: updated.id,
+          type: 'adjust',
+          qty: updated.stockQty - before.stockQty,
+          referenceType: 'manual_edit',
+          note: 'Edit master bahan',
+          createdBy: staffId,
+          createdAt: now,
+        });
+      }
       await audit(tx, {
         staffId,
         action: 'ingredient.updated',
@@ -88,7 +105,7 @@ export async function adjustStock(
   note?: string | null,
 ) {
   const amount = Math.round(Number(qty));
-  if (!Number.isFinite(amount) || amount <= 0) {
+  if (!Number.isFinite(amount) || (type === 'opname' ? amount < 0 : amount <= 0)) {
     throw new AppError('INVALID_QTY', 'Jumlah stok tidak valid.');
   }
   const db = await getDb();
@@ -243,31 +260,50 @@ export async function consumeIngredientsForOrder(tx: DbTransaction, orderId: str
 }
 
 export async function restoreIngredientsForOrder(tx: DbTransaction, orderId: string) {
-  const items = await tx.select().from(orderItems).where(eq(orderItems.orderId, orderId));
-  if (items.length === 0) return;
-  const recipeRows = await tx
-    .select({ recipe: recipes, ingredient: ingredients })
-    .from(recipes)
-    .innerJoin(ingredients, eq(recipes.ingredientId, ingredients.id))
-    .where(inArray(recipes.menuItemId, items.map((item) => item.menuItemId)));
+  const [alreadyRestored] = await tx
+    .select({ id: stockMovements.id })
+    .from(stockMovements)
+    .where(
+      and(
+        eq(stockMovements.referenceType, 'order_restore'),
+        eq(stockMovements.referenceId, orderId),
+      ),
+    )
+    .limit(1);
+  if (alreadyRestored) return;
+
+  // Restore hanya bahan yang benar-benar dipotong saat order dibuat.
+  const consumed = await tx
+    .select({
+      ingredientId: stockMovements.ingredientId,
+      qty: sql<number>`sum(-${stockMovements.qty})::int`,
+    })
+    .from(stockMovements)
+    .where(
+      and(
+        eq(stockMovements.referenceType, 'order'),
+        eq(stockMovements.referenceId, orderId),
+        eq(stockMovements.type, 'out'),
+      ),
+    )
+    .groupBy(stockMovements.ingredientId);
+  if (consumed.length === 0) return;
+
   const now = await dbNow(tx);
-  for (const item of items) {
-    for (const row of recipeRows.filter((entry) => entry.recipe.menuItemId === item.menuItemId)) {
-      const qty = row.recipe.qty * item.qty;
-      await tx
-        .update(ingredients)
-        .set({ stockQty: sql`${ingredients.stockQty} + ${qty}`, updatedAt: now })
-        .where(eq(ingredients.id, row.ingredient.id));
-      await tx.insert(stockMovements).values({
-        ingredientId: row.ingredient.id,
-        type: 'in',
-        qty,
-        referenceType: 'order_restore',
-        referenceId: orderId,
-        note: `Restore ${item.nameSnapshot}`,
-        createdAt: now,
-      });
-    }
+  for (const row of consumed) {
+    await tx
+      .update(ingredients)
+      .set({ stockQty: sql`${ingredients.stockQty} + ${row.qty}`, updatedAt: now })
+      .where(eq(ingredients.id, row.ingredientId));
+    await tx.insert(stockMovements).values({
+      ingredientId: row.ingredientId,
+      type: 'in',
+      qty: row.qty,
+      referenceType: 'order_restore',
+      referenceId: orderId,
+      note: 'Restore dari pembatalan order',
+      createdAt: now,
+    });
   }
 }
 

@@ -1,7 +1,7 @@
 import { asc, desc, eq } from 'drizzle-orm';
 import { dbNow, getDb } from '@/lib/db';
 import { assets, maintenanceLogs, venueTables } from '@/lib/db/schema';
-import { AppError } from '@/lib/errors';
+import { AppError, isUniqueViolation } from '@/lib/errors';
 import { audit } from './audit';
 
 export type AssetInput = {
@@ -22,7 +22,8 @@ export async function saveAsset(staffId: string, input: AssetInput) {
   }
   if (name.length < 2) throw new AppError('INVALID_NAME', 'Nama aset wajib diisi.');
   const db = await getDb();
-  return db.transaction(async (tx) => {
+  try {
+    return await db.transaction(async (tx) => {
     const now = await dbNow(tx);
     if (input.id) {
       const [updated] = await tx
@@ -70,7 +71,13 @@ export async function saveAsset(staffId: string, input: AssetInput) {
       at: now,
     });
     return { id: created.id };
-  });
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new AppError('ASSET_CODE_TAKEN', `Kode aset ${code} sudah dipakai.`);
+    }
+    throw error;
+  }
 }
 
 export async function logMaintenance(

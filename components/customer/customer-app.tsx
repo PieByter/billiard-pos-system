@@ -34,6 +34,7 @@ export function CustomerApp({ data }: { data: CustomerData }) {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [hasServiceRequest, setHasServiceRequest] = useState(data.openServiceRequest);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [favoritesReady, setFavoritesReady] = useState(false);
   const idempotencyRef = useRef<string | null>(null);
   const storageKey = `cuetap:cart:${data.table.qrToken}`;
   const favoritesKey = 'cuetap:favorites';
@@ -83,15 +84,17 @@ export function CustomerApp({ data }: { data: CustomerData }) {
     } catch {
       // ignore corrupt storage
     }
+    setFavoritesReady(true);
   }, [favoritesKey]);
 
   useEffect(() => {
+    if (!favoritesReady) return;
     try {
       window.localStorage.setItem(favoritesKey, JSON.stringify(favorites));
     } catch {
       // storage full / private mode
     }
-  }, [favorites, favoritesKey]);
+  }, [favorites, favoritesKey, favoritesReady]);
 
   const favoriteSet = useMemo(() => new Set(favorites), [favorites]);
 

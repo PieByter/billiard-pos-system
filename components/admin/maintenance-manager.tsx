@@ -167,10 +167,20 @@ export function MaintenanceManager({ data }: { data: MaintenanceData }) {
                   </p>
                 </div>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="icon-sm" onClick={() => openEdit(asset)}>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => openEdit(asset)}
+                    aria-label={`Edit aset ${asset.name}`}
+                  >
                     <Icon name="edit" className="text-[16px]" />
                   </Button>
-                  <Button variant="ghost" size="icon-sm" onClick={() => openLog(asset)}>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => openLog(asset)}
+                    aria-label={`Catat maintenance ${asset.name}`}
+                  >
                     <Icon name="handyman" className="text-[16px]" />
                   </Button>
                 </div>
