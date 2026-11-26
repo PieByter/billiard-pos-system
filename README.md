@@ -24,7 +24,10 @@ worker).
 | `/staff/admin` | KPI shift, balancing kas + hitung per pecahan, komposisi pembayaran, master tarif, audit log, riwayat shift, X/Z report |
 | `/staff/admin/menu` | CRUD menu, harga, stok, station, best seller, availability |
 | `/staff/admin/tables` | CRUD meja, tarif, flag self-order, QR generation & rotasi token |
-| `/staff/admin/reports` | Omzet 7/14/30 hari, billiard vs F&B, metode bayar, top menu & meja, export CSV |
+| `/staff/admin/reports` | Omzet 7/14/30 hari, billiard vs F&B, metode bayar, top menu & meja, refund, export CSV |
+| `/staff/admin/refunds` | Refund pembayaran bill lunas (partial/full), kategori refund, restock stok, riwayat refund |
+| `/staff/admin/staff` | CRUD staff, role, aktif/nonaktif, reset akses, provisioning Supabase Auth |
+| `/staff/admin/settings` | Pengaturan venue, PB1, service charge, footer struk, warning menit |
 | `/print/*` | Struk bill 80mm, tiket kitchen 80mm, X/Z report shift, kartu QR A4 |
 
 ### Layar tamu
@@ -40,8 +43,10 @@ worker).
 - **Waktu dari Postgres** (`now()`), bukan jam client.
 - **Idempotency** pada order (unique key) dan payment webhook (`external_ref`).
 - **Stok atomik** (`stock >= qty` di dalam `UPDATE`) sehingga tidak oversell.
-- **Audit log append-only** untuk start/stop sesi, pause, order, void, diskon, shift, rotasi QR, dll.
-- **Role guard server-side**: owner / cashier / kitchen. Admin hanya owner.
+- **Refund append-only** per payment; laporan dan expected cash shift memakai nilai neto setelah refund.
+- **Snapshot venue settings**: perubahan PB1/service hanya berlaku untuk bill baru.
+- **Audit log append-only** untuk start/stop sesi, pause, order, void, diskon, refund, staff, settings, shift, rotasi QR, dll.
+- **Role guard server-side**: owner / cashier / kitchen. Admin hanya owner; staff nonaktif langsung ditolak.
 - **PWA**: installable, cache menu yang pernah dibuka, halaman `/offline`, print browser 80mm.
 - **Realtime**: Supabase Postgres Changes → `router.refresh()` bila dikonfigurasi, dengan polling
   fallback (5s KDS, 10s kasir, 8s customer) yang selalu aktif.
@@ -154,7 +159,11 @@ npm run auth:provision
 Atau buat manual di Dashboard → Authentication → Users (email + password). Ganti password demo
 sebelum go-live.
 
-**Menambah staff dengan email sendiri:**
+Setelah `SUPABASE_SERVICE_ROLE_KEY` diisi, owner juga bisa mengelola staff dari
+**Admin → Staff**: tambah staff, ubah role, reset password, dan nonaktifkan akses. UI akan membuat
+Supabase Auth user + row `profiles` sekaligus. Tanpa service role key, tombol tambah staff dinonaktifkan.
+
+**Menambah staff dengan email sendiri (fallback SQL):**
 ```sql
 insert into public.profiles (id, email, name, role)
 values (gen_random_uuid(), 'nama@venue.com', 'Nama Staff', 'cashier');
@@ -287,13 +296,12 @@ public/                         # manifest, sw.js, icons
 | Stock | Opsional per menu (`stock = null` = tak dilacak). |
 
 ### Belum termasuk v1 (roadmap)
-Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (20 item, mulai dari refund flow). Ringkasannya:
+Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (20 item; refund manual, staff management, dan venue settings sudah ada). Ringkasannya:
 
 Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi eksternal, bukan karena terlewat:
 
 - **Auto-switch tarif peak/off-peak.** Saat ini tarif dipilih per meja dan di-snapshot saat start. Untuk harga otomatis per jam/hari butuh tabel jadwal tarif + UI pengaturan.
-- **Staff management UI.** Staff masih di-provision lewat seed/SQL + Supabase Auth (lihat §3.4) agar tidak ada endpoint admin yang bisa membuat auth user tanpa service role.
-- **QRIS create-charge / refund otomatis.** Yang tersedia baru webhook settlement opsional; pembuatan QR dinamis dan refund butuh payment gateway (Midtrans/Xendit).
+- **QRIS create-charge / refund otomatis.** Refund manual sudah tersedia di Admin → Refund; pembuatan QR dinamis dan refund otomatis butuh payment gateway (Midtrans/Xendit).
 - **Denda & penalty engine.** Overtime sesi, no-show reservasi, kerusakan/kehilangan alat, dan denda manual belum ada aturan, approval, atau pencatatan di bill.
 - **Offline write queue.** PWA menyimpan menu read-only; order/pembayaran tetap butuh jaringan (sesuai PRD v1).
 - **ESC/POS langsung / print agent.** Cetak memakai `window.print()` 80mm; printer LAN perlu driver di komputer kasir.
@@ -338,6 +346,11 @@ Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi e
 - [ ] Tambah item stok 0 → tombol sold out; oversell ditolak.
 - [ ] Pindah meja saat timer berjalan; timer tetap.
 - [ ] Diskon owner → total & audit berubah; void → stok kembali, audit tercatat.
+- [ ] Refund partial → sisa payment berkurang, laporan neto, expected cash shift ikut turun.
+- [ ] Refund full → bill full refund, stok kembali sekali, struk menampilkan refund, tidak bisa refund ulang.
+- [ ] Refund melebihi sisa payment ditolak; refund pada bill open/void ditolak.
+- [ ] Staff: tambah staff → login; nonaktifkan → login ditolak; owner terakhir tidak bisa dinonaktifkan.
+- [ ] Settings: ubah PB1/service → hanya bill baru berubah; bill berjalan tetap snapshot lama.
 - [ ] Tutup shift dengan bill open (harus ditolak); setelah semua bill lunas → Z-report.
 - [ ] Webhook payment: signature salah 401, dobel 200 idempoten, nominal salah 400.
 - [ ] QR: copy link, buka incognito, rotate token → link lama 404.

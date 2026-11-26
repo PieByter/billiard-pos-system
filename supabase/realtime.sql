@@ -50,7 +50,7 @@ declare
 begin
   foreach t in array array[
     'venue_tables','bills','billiard_sessions','orders','order_items',
-    'payments','service_requests'
+    'payments','service_requests','venue_settings'
   ]
   loop
     execute format('drop policy if exists %I on public.%I', 'cuetap_staff_read_' || t, t);
@@ -72,6 +72,11 @@ create policy "cuetap_owner_read_audit"
   on public.audit_log for select to authenticated
   using (public.cuetap_is_owner());
 
+drop policy if exists "cuetap_owner_read_refunds" on public.refunds;
+create policy "cuetap_owner_read_refunds"
+  on public.refunds for select to authenticated
+  using (public.cuetap_is_owner());
+
 -- Tambahkan tabel ke publication Realtime (abaikan jika sudah ada).
 do $$
 declare
@@ -79,7 +84,7 @@ declare
 begin
   foreach t in array array[
     'venue_tables','bills','billiard_sessions','orders','order_items',
-    'payments','service_requests','shifts','audit_log'
+    'payments','service_requests','venue_settings','refunds','shifts','audit_log'
   ]
   loop
     begin

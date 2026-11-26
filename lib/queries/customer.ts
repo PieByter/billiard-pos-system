@@ -16,12 +16,12 @@ import type {
   MenuItemView,
   PublicOrderStatusResponse,
 } from '@/lib/types';
+import { loadVenueSettings } from '@/lib/services/settings';
 import {
   buildBillView,
   buildCategoryViews,
   buildMenuItemView,
 } from './shared';
-import { VENUE_NAME } from '@/lib/constants';
 
 type CustomerContext = {
   table: typeof venueTables.$inferSelect;
@@ -137,7 +137,7 @@ export async function getCustomerData(token: string): Promise<CustomerData | nul
   if (!context) return null;
   const db = await getDb();
 
-  const [categoryRows, itemRows] = await Promise.all([
+  const [categoryRows, itemRows, venue] = await Promise.all([
     db
       .select()
       .from(menuCategories)
@@ -154,6 +154,7 @@ export async function getCustomerData(token: string): Promise<CustomerData | nul
         ),
       )
       .orderBy(asc(menuItems.sortOrder)),
+    loadVenueSettings(),
   ]);
 
   const itemViews: MenuItemView[] = itemRows.map((row) =>
@@ -169,7 +170,7 @@ export async function getCustomerData(token: string): Promise<CustomerData | nul
       allowSelfOrder: context.table.allowSelfOrder,
       qrToken: context.table.qrToken,
     },
-    venueName: VENUE_NAME,
+    venueName: venue.venueName,
     categories: buildCategoryViews(categoryRows),
     items: itemViews,
     orders: toCustomerOrders(context.orders, context.items),

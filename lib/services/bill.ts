@@ -6,8 +6,10 @@ import {
   menuItems,
   orderItems,
   orders,
+  venueSettings,
   type Bill,
 } from '@/lib/db/schema';
+import { SERVICE_RATE_BPS, TAX_RATE_BPS } from '@/lib/constants';
 import {
   billableElapsedSeconds,
   computeBillTotals,
@@ -34,10 +36,18 @@ export async function ensureOpenBill(
   const existing = await findOpen();
   if (existing) return existing;
 
+  const [settings] = await tx.select().from(venueSettings).limit(1);
+
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const [created] = await tx
       .insert(bills)
-      .values({ billNumber: billNumber(), tableId, openedBy })
+      .values({
+        billNumber: billNumber(),
+        tableId,
+        openedBy,
+        taxRateBps: settings?.taxRateBps ?? TAX_RATE_BPS,
+        serviceRateBps: settings?.serviceRateBps ?? SERVICE_RATE_BPS,
+      })
       .onConflictDoNothing()
       .returning();
     if (created) return created;

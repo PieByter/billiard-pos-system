@@ -30,6 +30,7 @@ export const orderStatusEnum = pgEnum('order_status', [
   'cancelled',
 ]);
 export const payMethodEnum = pgEnum('pay_method', ['cash', 'qris', 'transfer', 'edc']);
+export const refundCategoryEnum = pgEnum('refund_category', ['billiard', 'fnb', 'other']);
 export const stationEnum = pgEnum('station', ['kitchen', 'bar']);
 export const shiftStatusEnum = pgEnum('shift_status', ['open', 'closed']);
 export const serviceRequestTypeEnum = pgEnum('service_request_type', ['waiter', 'bill', 'assistance']);
@@ -53,6 +54,19 @@ export const profiles = pgTable('profiles', {
 /* -------------------------------------------------------------------------- */
 /*                              Billiard & Meja                               */
 /* -------------------------------------------------------------------------- */
+
+export const venueSettings = pgTable('venue_settings', {
+  id: text().primaryKey().default('default'),
+  venueName: text().notNull().default('Cue & Tap'),
+  address: text().notNull().default(''),
+  timezone: text().notNull().default('Asia/Jakarta'),
+  taxRateBps: integer().notNull().default(1000),
+  serviceRateBps: integer().notNull().default(500),
+  warningMinutes: integer().notNull().default(15),
+  receiptFooter: text().notNull().default('Terima kasih sudah mampir. Sampai jumpa lagi!'),
+  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  updatedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+}).enableRLS();
 
 export const billiardRates = pgTable('billiard_rates', {
   id: uuid().primaryKey().defaultRandom(),
@@ -107,6 +121,7 @@ export const bills = pgTable(
     taxAmount: integer().notNull().default(0),
     serviceAmount: integer().notNull().default(0),
     total: integer().notNull().default(0),
+    refundedAmount: integer().notNull().default(0),
     note: text(),
     openedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
     closedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
@@ -267,6 +282,31 @@ export const payments = pgTable(
   ],
 ).enableRLS();
 
+export const refunds = pgTable(
+  'refunds',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    billId: uuid()
+      .notNull()
+      .references(() => bills.id, { onDelete: 'cascade' }),
+    paymentId: uuid()
+      .notNull()
+      .references(() => payments.id, { onDelete: 'restrict' }),
+    amount: integer().notNull(),
+    category: refundCategoryEnum().notNull().default('other'),
+    reason: text().notNull(),
+    restocked: boolean().notNull().default(false),
+    externalRef: text().unique(),
+    approvedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('refunds_bill_idx').on(t.billId),
+    index('refunds_payment_idx').on(t.paymentId),
+    index('refunds_created_idx').on(t.createdAt),
+  ],
+).enableRLS();
+
 /* -------------------------------------------------------------------------- */
 /*                                   Shift                                    */
 /* -------------------------------------------------------------------------- */
@@ -344,6 +384,8 @@ export type MenuItem = typeof menuItems.$inferSelect;
 export type Order = typeof orders.$inferSelect;
 export type OrderItem = typeof orderItems.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
+export type Refund = typeof refunds.$inferSelect;
+export type VenueSettings = typeof venueSettings.$inferSelect;
 export type Shift = typeof shifts.$inferSelect;
 export type AuditEntry = typeof auditLog.$inferSelect;
 export type ServiceRequest = typeof serviceRequests.$inferSelect;

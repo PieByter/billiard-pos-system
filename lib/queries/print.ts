@@ -7,9 +7,11 @@ import {
   orders,
   payments,
   profiles,
+  refunds,
   venueTables,
   type StationType,
 } from '@/lib/db/schema';
+import { loadVenueSettings } from '@/lib/services/settings';
 import { buildBillView } from './shared';
 
 export async function getBillPrintData(billId: string) {
@@ -36,16 +38,26 @@ export async function getBillPrintData(billId: string) {
   const items = orderIds.length
     ? await db.select().from(orderItems).where(inArray(orderItems.orderId, orderIds))
     : [];
-  const paymentRows = await db
-    .select({ payment: payments, staffName: profiles.name })
-    .from(payments)
-    .leftJoin(profiles, eq(payments.receivedBy, profiles.id))
-    .where(eq(payments.billId, billId))
-    .orderBy(asc(payments.createdAt));
+  const [paymentRows, refundRows, venue] = await Promise.all([
+    db
+      .select({ payment: payments, staffName: profiles.name })
+      .from(payments)
+      .leftJoin(profiles, eq(payments.receivedBy, profiles.id))
+      .where(eq(payments.billId, billId))
+      .orderBy(asc(payments.createdAt)),
+    db
+      .select({ refund: refunds, staffName: profiles.name })
+      .from(refunds)
+      .leftJoin(profiles, eq(refunds.approvedBy, profiles.id))
+      .where(eq(refunds.billId, billId))
+      .orderBy(asc(refunds.createdAt)),
+    loadVenueSettings(),
+  ]);
 
   const staffById = new Map(staffRows.map((staff) => [staff.id, staff.name]));
   const view = buildBillView(row.bill, sessions, orderRows, items, serverNow);
   const paid = paymentRows.reduce((sum, entry) => sum + entry.payment.amount, 0);
+  const refunded = refundRows.reduce((sum, entry) => sum + entry.refund.amount, 0);
 
   return {
     bill: view,
@@ -59,6 +71,17 @@ export async function getBillPrintData(billId: string) {
       createdAt: entry.payment.createdAt.toISOString(),
     })),
     paid,
+    refunded,
+    refunds: refundRows.map((entry) => ({
+      id: entry.refund.id,
+      amount: entry.refund.amount,
+      category: entry.refund.category,
+      reason: entry.refund.reason,
+      restocked: entry.refund.restocked,
+      staffName: entry.staffName,
+      createdAt: entry.refund.createdAt.toISOString(),
+    })),
+    venue,
     openedByName: row.bill.openedBy ? staffById.get(row.bill.openedBy) ?? null : null,
     closedByName: row.bill.closedBy ? staffById.get(row.bill.closedBy) ?? null : null,
     printedAt: serverNow.toISOString(),

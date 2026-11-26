@@ -24,8 +24,12 @@ export function AdminDashboard({
 }) {
   const router = useRouter();
   const { shiftStats: stats, shift } = data;
-  const billiardShare = stats.revenue ? Math.round((stats.billiardRevenue / stats.revenue) * 100) : 0;
-  const fnbShare = stats.revenue ? Math.round((stats.fnbRevenue / stats.revenue) * 100) : 0;
+  const billiardShare = stats.revenue
+    ? Math.max(0, Math.round((stats.billiardRevenue / stats.revenue) * 100))
+    : 0;
+  const fnbShare = stats.revenue
+    ? Math.max(0, Math.round((stats.fnbRevenue / stats.revenue) * 100))
+    : 0;
 
   useRealtimeRefresh(['payments', 'bills', 'shifts', 'audit_log']);
 
@@ -68,7 +72,11 @@ export function AdminDashboard({
           value={formatRp(stats.revenue)}
           icon="trending_up"
           tone="primary"
-          hint={`${stats.transactionCount} transaksi settled`}
+          hint={
+            stats.refundAmount > 0
+              ? `${stats.transactionCount} transaksi · refund ${formatRp(stats.refundAmount)}`
+              : `${stats.transactionCount} transaksi settled`
+          }
         />
         <StatCard
           label="Pendapatan billiard"
@@ -151,7 +159,7 @@ export function AdminDashboard({
 function CompositionCard({ data }: { data: AdminData }) {
   const stats = data.shiftStats;
   const total = Math.max(1, stats.revenue);
-  const cashShare = stats.cashRevenue / total;
+  const cashShare = Math.max(0, Math.min(1, stats.cashRevenue / total));
   const circumference = 2 * Math.PI * 76;
   const cashLength = cashShare * circumference;
 
@@ -519,14 +527,33 @@ function QuickOps({ data }: { data: AdminData }) {
           <span className="text-body-sm font-semibold text-on-surface">Laporan</span>
           <span className="text-[10px] text-outline">7 hari terakhir</span>
         </Link>
-        <div className="flex flex-col gap-1 rounded-lg border border-outline-variant/25 bg-surface-container p-2.5">
-          <Icon name="notifications_active" className="text-[19px] text-error" />
-          <span className="text-body-sm font-semibold text-on-surface">Panggilan</span>
-          <span className="text-[10px] text-outline">{data.openServiceRequests} open</span>
-        </div>
+        <Link
+          href="/staff/admin/refunds"
+          className="flex flex-col gap-1 rounded-lg border border-outline-variant/25 bg-surface-container p-2.5 transition-colors hover:border-error/30 hover:bg-surface-container-high"
+        >
+          <Icon name="undo" className="text-[19px] text-error" />
+          <span className="text-body-sm font-semibold text-on-surface">Refund</span>
+          <span className="text-[10px] text-outline">{formatRp(data.shiftStats.refundAmount)}</span>
+        </Link>
+        <Link
+          href="/staff/admin/staff"
+          className="flex flex-col gap-1 rounded-lg border border-outline-variant/25 bg-surface-container p-2.5 transition-colors hover:border-secondary/30 hover:bg-surface-container-high"
+        >
+          <Icon name="badge" className="text-[19px] text-secondary" />
+          <span className="text-body-sm font-semibold text-on-surface">Staff</span>
+          <span className="text-[10px] text-outline">Akses &amp; role</span>
+        </Link>
+        <Link
+          href="/staff/admin/settings"
+          className="flex flex-col gap-1 rounded-lg border border-outline-variant/25 bg-surface-container p-2.5 transition-colors hover:border-tertiary/30 hover:bg-surface-container-high"
+        >
+          <Icon name="settings" className="text-[19px] text-tertiary" />
+          <span className="text-body-sm font-semibold text-on-surface">Pengaturan</span>
+          <span className="text-[10px] text-outline">Pajak &amp; venue</span>
+        </Link>
       </div>
       <div className="rounded-lg border border-error/20 bg-error/[0.04] px-2.5 py-2 text-[10px] leading-4 text-on-surface-variant">
-        Void dan diskon hanya bisa dilakukan owner dan otomatis tercatat di audit log.
+        Void, diskon, dan refund hanya bisa dilakukan owner dan otomatis tercatat di audit log.
       </div>
     </section>
   );

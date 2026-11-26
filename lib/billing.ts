@@ -103,7 +103,8 @@ export function formatDuration(totalSeconds: number): string {
 /** "Rp 105.000" — tanpa desimal. */
 export function formatRp(amount: number | null | undefined): string {
   const value = Number.isFinite(amount ?? NaN) ? Math.round(amount as number) : 0;
-  return `Rp ${new Intl.NumberFormat('id-ID').format(value)}`;
+  const sign = value < 0 ? '-' : '';
+  return `${sign}Rp ${new Intl.NumberFormat('id-ID').format(Math.abs(value))}`;
 }
 
 /** Angka ringkas untuk widget: 1,95 jt */

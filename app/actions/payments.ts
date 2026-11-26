@@ -10,6 +10,7 @@ import {
   payBill,
   voidBill,
 } from '@/lib/services/payments';
+import { refundPayment } from '@/lib/services/refunds';
 import type { PaymentInput } from '@/lib/types';
 
 const paymentSchema = z.object({
@@ -53,6 +54,33 @@ export async function applyDiscountAction(
       { billId, amount, reason },
     );
     const result = await applyBillDiscount(data.billId, staff.id, data.amount, data.reason);
+    revalidateOps();
+    return result;
+  });
+}
+
+export async function refundPaymentAction(input: {
+  billId: string;
+  paymentId: string;
+  amount: number;
+  category: 'billiard' | 'fnb' | 'other';
+  reason: string;
+  restock?: boolean;
+}): Promise<ActionResult<Awaited<ReturnType<typeof refundPayment>>>> {
+  return runAction(async () => {
+    const staff = await requireStaffAction(['owner']);
+    const data = parseOrThrow(
+      z.object({
+        billId: z.string().uuid(),
+        paymentId: z.string().uuid(),
+        amount: z.coerce.number().int().min(1).max(1_000_000_000),
+        category: z.enum(['billiard', 'fnb', 'other']),
+        reason: z.string().min(3).max(240),
+        restock: z.boolean().optional(),
+      }),
+      input,
+    );
+    const result = await refundPayment(staff.id, data);
     revalidateOps();
     return result;
   });

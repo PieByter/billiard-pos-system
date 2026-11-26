@@ -3,12 +3,14 @@ import type {
   OrderSource,
   OrderStatus,
   PayMethod,
+  ProfileRole,
   Shift,
   StationType,
   TableKind,
 } from './db/schema';
 
-export type { OrderSource, OrderStatus, PayMethod } from './db/schema';
+export type { OrderSource, OrderStatus, PayMethod, ProfileRole } from './db/schema';
+export type RefundCategory = 'billiard' | 'fnb' | 'other';
 
 export type RateView = Pick<
   BilliardRate,
@@ -214,6 +216,7 @@ export type AdminData = {
     fnbRevenue: number;
     cashRevenue: number;
     nonCashRevenue: number;
+    refundAmount: number;
     transactionCount: number;
     openBills: number;
     openBillTotal: number;
@@ -244,6 +247,8 @@ export type AdminData = {
 export type ShiftReportData = {
   shift: ShiftView;
   staffName: string;
+  venueName: string;
+  venueAddress: string;
   serverNow: string;
   payments: Array<{
     id: string;
@@ -257,12 +262,23 @@ export type ShiftReportData = {
   totalRevenue: number;
   cashRevenue: number;
   expectedCash: number;
+  refundTotal: number;
+  refunds: Array<{
+    id: string;
+    billNumber: string;
+    tableCode: string;
+    method: PayMethod;
+    amount: number;
+    reason: string;
+    createdAt: string;
+  }>;
   bills: Array<{
     id: string;
     billNumber: string;
     tableCode: string;
     guestName: string | null;
     total: number;
+    refundedAmount: number;
     closedAt: string | null;
   }>;
 };
@@ -270,6 +286,7 @@ export type ShiftReportData = {
 export type ReportDay = {
   date: string;
   revenue: number;
+  refunds: number;
   transactionCount: number;
   billiardRevenue: number;
   fnbRevenue: number;
@@ -280,7 +297,14 @@ export type ReportData = {
   topItems: Array<{ name: string; qty: number; revenue: number }>;
   topTables: Array<{ code: string; zone: string; revenue: number; sessions: number }>;
   paymentMix: Array<{ method: PayMethod; amount: number; count: number; share: number }>;
-  totals: { revenue: number; transactions: number; avgBill: number; billiard: number; fnb: number };
+  totals: {
+    revenue: number;
+    refunds: number;
+    transactions: number;
+    avgBill: number;
+    billiard: number;
+    fnb: number;
+  };
 };
 
 export type MenuAdminData = {
@@ -312,6 +336,69 @@ export type CustomerOrderView = {
   cancelledAt: string | null;
   items: Array<{ name: string; qty: number; note: string | null; station: StationType }>;
   subtotal: number;
+};
+
+export type RefundAdminPaymentView = {
+  id: string;
+  method: PayMethod;
+  amount: number;
+  refundedAmount: number;
+  refundableAmount: number;
+  createdAt: string;
+};
+
+export type RefundAdminBillView = {
+  id: string;
+  number: string;
+  tableCode: string;
+  guestName: string | null;
+  total: number;
+  refundedAmount: number;
+  closedAt: string | null;
+  payments: RefundAdminPaymentView[];
+  refunds: Array<{
+    id: string;
+    amount: number;
+    category: RefundCategory;
+    reason: string;
+    restocked: boolean;
+    staffName: string;
+    createdAt: string;
+  }>;
+};
+
+export type RefundAdminData = {
+  bills: RefundAdminBillView[];
+  totalRefunded: number;
+};
+
+export type VenueSettingsView = {
+  venueName: string;
+  address: string;
+  timezone: string;
+  taxRateBps: number;
+  serviceRateBps: number;
+  warningMinutes: number;
+  receiptFooter: string;
+  updatedAt: string | null;
+  updatedByName: string | null;
+};
+
+export type StaffAdminView = {
+  id: string;
+  email: string;
+  name: string;
+  role: ProfileRole;
+  active: boolean;
+  hasPassword: boolean;
+  createdAt: string;
+};
+
+export type StaffSettingsData = {
+  settings: VenueSettingsView;
+  staff: StaffAdminView[];
+  authMode: 'supabase' | 'demo' | 'disabled';
+  canProvisionAuth: boolean;
 };
 
 export type CustomerData = {

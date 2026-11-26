@@ -23,7 +23,7 @@ export default async function BillPrintPage({
   const data = await getBillPrintData(billId);
   if (!data) notFound();
 
-  const { bill, table, payments, paid } = data;
+  const { bill, table, payments, paid, refunded, refunds, venue } = data;
   const discount = bill.discountAmount;
   const isPaid = bill.status === 'paid';
   const isVoid = bill.status === 'void';
@@ -39,10 +39,11 @@ export default async function BillPrintPage({
 
       <div className="mx-auto w-[302px] bg-white p-3 font-mono text-[10.5px] leading-[1.45] text-black shadow-xl print:w-[80mm] print:shadow-none">
         <div className="text-center">
-          <div className="text-[15px] font-extrabold tracking-widest">CUE &amp; TAP</div>
+          <div className="text-[15px] font-extrabold uppercase tracking-widest">
+            {venue.venueName}
+          </div>
           <div className="text-[9px] uppercase tracking-[0.16em]">Billiard Hall &amp; Lounge</div>
-          <div className="mt-1 text-[9px]">Jl. Cue Sports No. 8 · Jakarta</div>
-          <div className="text-[9px]">Instagram @cuetap.lounge · 0812-0000-8888</div>
+          {venue.address ? <div className="mt-1 text-[9px]">{venue.address}</div> : null}
         </div>
 
         <ReceiptDivider />
@@ -134,8 +135,29 @@ export default async function BillPrintPage({
               />
             ))}
             <ReceiptLine label="Dibayar" value={formatRp(paid)} />
+            {refunded > 0 ? (
+              <>
+                <ReceiptLine label="Refund" value={`- ${formatRp(refunded)}`} />
+                <ReceiptLine label="Net diterima" value={formatRp(paid - refunded)} />
+              </>
+            ) : null}
             {remaining > 0 ? <ReceiptLine label="Sisa" value={formatRp(remaining)} /> : null}
-            <ReceiptLine label="Status" value="LUNAS" />
+            <ReceiptLine
+              label="Status"
+              value={refunded >= bill.total ? 'LUNAS · FULL REFUND' : 'LUNAS'}
+            />
+            {refunds.map((refund) => (
+              <div key={refund.id} className="mt-1 border-t border-black/30 pt-1 text-[8px] leading-3 text-black/70">
+                <div className="flex justify-between">
+                  <span>Refund {refund.category}</span>
+                  <span>- {formatRp(refund.amount)}</span>
+                </div>
+                <div>
+                  {formatClock(refund.createdAt)} · {refund.reason}
+                  {refund.restocked ? ' · stok kembali' : ''}
+                </div>
+              </div>
+            ))}
           </>
         ) : (
           <ReceiptLine label="Status" value={isVoid ? 'VOID' : 'OPEN — BELUM LUNAS'} />
@@ -144,7 +166,7 @@ export default async function BillPrintPage({
         <ReceiptDivider />
 
         <div className="text-center text-[9px] leading-4">
-          <p className="font-semibold">Terima kasih sudah bermain &amp; ngopi di Cue &amp; Tap.</p>
+          <p className="font-semibold">{venue.receiptFooter}</p>
           <p>Simpan struk ini sebagai bukti pembayaran.</p>
           <p className="mt-1">PB1 &amp; service charge sesuai ketentuan venue.</p>
           <p className="mt-1 text-[8px] tracking-wider">

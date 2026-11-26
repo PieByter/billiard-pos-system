@@ -15,6 +15,80 @@ import {
   toggleRate,
   updateMenuStock,
 } from '@/lib/services/admin';
+import { saveStaff, setStaffActive } from '@/lib/services/staff';
+import { saveVenueSettings } from '@/lib/services/settings';
+
+export async function saveStaffAction(input: {
+  id?: string;
+  email: string;
+  name: string;
+  role: 'owner' | 'cashier' | 'kitchen';
+  active?: boolean;
+  password?: string | null;
+}): Promise<ActionResult<{ id: string }>> {
+  return runAction(async () => {
+    const staff = await requireStaffAction(['owner']);
+    const data = parseOrThrow(
+      z.object({
+        id: z.string().uuid().optional(),
+        email: z.string().email('Email tidak valid.').max(160),
+        name: z.string().min(2).max(80),
+        role: z.enum(['owner', 'cashier', 'kitchen']),
+        active: z.boolean().optional(),
+        password: z.string().min(8).max(120).optional().nullable(),
+      }),
+      input,
+    );
+    const result = await saveStaff(staff.id, data);
+    revalidateOps();
+    return result;
+  });
+}
+
+export async function setStaffActiveAction(
+  staffId: string,
+  active: boolean,
+): Promise<ActionResult<{ active: boolean }>> {
+  return runAction(async () => {
+    const staff = await requireStaffAction(['owner']);
+    const data = parseOrThrow(
+      z.object({ staffId: z.string().uuid(), active: z.boolean() }),
+      { staffId, active },
+    );
+    const result = await setStaffActive(staff.id, data.staffId, data.active);
+    revalidateOps();
+    return result;
+  });
+}
+
+export async function saveVenueSettingsAction(input: {
+  venueName: string;
+  address?: string | null;
+  timezone?: string;
+  taxRateBps: number;
+  serviceRateBps: number;
+  warningMinutes: number;
+  receiptFooter?: string | null;
+}): Promise<ActionResult<Awaited<ReturnType<typeof saveVenueSettings>>>> {
+  return runAction(async () => {
+    const staff = await requireStaffAction(['owner']);
+    const data = parseOrThrow(
+      z.object({
+        venueName: z.string().min(2).max(100),
+        address: z.string().max(240).optional().nullable(),
+        timezone: z.string().max(60).optional(),
+        taxRateBps: z.coerce.number().int().min(0).max(10_000),
+        serviceRateBps: z.coerce.number().int().min(0).max(10_000),
+        warningMinutes: z.coerce.number().int().min(0).max(120),
+        receiptFooter: z.string().max(240).optional().nullable(),
+      }),
+      input,
+    );
+    const result = await saveVenueSettings(staff.id, data);
+    revalidateOps();
+    return result;
+  });
+}
 
 export async function saveRateAction(input: {
   id?: string;

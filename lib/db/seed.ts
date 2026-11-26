@@ -88,6 +88,18 @@ export async function seedDatabase(db: AppDb, options: SeedOptions = {}): Promis
     const owner = staffRows[0];
     const cashier = staffRows[1];
 
+    await tx.insert(s.venueSettings).values({
+      id: 'default',
+      venueName: 'Cue & Tap',
+      address: 'Jl. Cue Sports No. 8 · Jakarta',
+      timezone: 'Asia/Jakarta',
+      taxRateBps: TAX_RATE_BPS,
+      serviceRateBps: SERVICE_RATE_BPS,
+      warningMinutes: 15,
+      receiptFooter: 'Terima kasih sudah bermain & ngopi di Cue & Tap.',
+      updatedBy: owner.id,
+    });
+
     /* ------------------------------ Rates ------------------------------ */
     const rateRows = await tx
       .insert(s.billiardRates)

@@ -35,6 +35,27 @@ const ADMIN_TABS = [
     icon: 'monitoring',
     roles: ['owner'] as ProfileRole[],
   },
+  {
+    href: '/staff/admin/refunds',
+    label: 'Refund',
+    short: 'Refund',
+    icon: 'undo',
+    roles: ['owner'] as ProfileRole[],
+  },
+  {
+    href: '/staff/admin/staff',
+    label: 'Staff',
+    short: 'Staff',
+    icon: 'badge',
+    roles: ['owner'] as ProfileRole[],
+  },
+  {
+    href: '/staff/admin/settings',
+    label: 'Pengaturan',
+    short: 'Setelan',
+    icon: 'settings',
+    roles: ['owner'] as ProfileRole[],
+  },
 ];
 
 export function AdminNav({ role }: { role: ProfileRole }) {

@@ -20,8 +20,12 @@ function dayLabel(key: string) {
 export function ReportView({ data, range }: { data: ReportData; range: number }) {
   const maxDay = Math.max(1, ...data.days.map((day) => day.revenue));
   const totalMix = Math.max(1, data.totals.revenue);
-  const billiardShare = totalMix ? Math.round((data.totals.billiard / totalMix) * 100) : 0;
-  const fnbShare = totalMix ? Math.round((data.totals.fnb / totalMix) * 100) : 0;
+  const billiardShare = totalMix
+    ? Math.max(0, Math.round((data.totals.billiard / totalMix) * 100))
+    : 0;
+  const fnbShare = totalMix
+    ? Math.max(0, Math.round((data.totals.fnb / totalMix) * 100))
+    : 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -64,7 +68,11 @@ export function ReportView({ data, range }: { data: ReportData; range: number })
           value={formatRp(data.totals.revenue)}
           icon="trending_up"
           tone="primary"
-          hint={`${data.totals.transactions} transaksi settled`}
+          hint={
+            data.totals.refunds > 0
+              ? `${data.totals.transactions} transaksi · refund ${formatRp(data.totals.refunds)}`
+              : `${data.totals.transactions} transaksi settled`
+          }
         />
         <StatCard
           label="Rata-rata per bill"
@@ -139,13 +147,14 @@ export function ReportView({ data, range }: { data: ReportData; range: number })
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] border-collapse text-left">
+          <table className="w-full min-w-[720px] border-collapse text-left">
             <thead>
               <tr className="text-label-badge uppercase tracking-[0.08em] text-on-surface-variant">
                 <th className="py-2 font-bold">Tanggal</th>
                 <th className="py-2 font-bold">Transaksi</th>
                 <th className="py-2 font-bold">Billiard</th>
                 <th className="py-2 font-bold">F&B</th>
+                {data.totals.refunds > 0 ? <th className="py-2 font-bold">Refund</th> : null}
                 <th className="py-2 text-right font-bold">Total</th>
               </tr>
             </thead>
@@ -156,6 +165,11 @@ export function ReportView({ data, range }: { data: ReportData; range: number })
                   <td className="numeric py-2.5 text-on-surface-variant">{day.transactionCount}</td>
                   <td className="numeric py-2.5 text-secondary">{formatRp(day.billiardRevenue)}</td>
                   <td className="numeric py-2.5 text-tertiary">{formatRp(day.fnbRevenue)}</td>
+                  {data.totals.refunds > 0 ? (
+                    <td className="numeric py-2.5 text-error">
+                      {day.refunds > 0 ? `- ${formatRp(day.refunds)}` : '—'}
+                    </td>
+                  ) : null}
                   <td className="numeric py-2.5 text-right font-bold text-on-surface">
                     {formatRp(day.revenue)}
                   </td>
@@ -199,7 +213,7 @@ export function ReportView({ data, range }: { data: ReportData; range: number })
                       'h-full rounded-full',
                       row.method === 'cash' ? 'bg-primary' : 'bg-secondary',
                     )}
-                    style={{ width: `${row.share}%` }}
+                    style={{ width: `${Math.max(0, row.share)}%` }}
                   />
                 </div>
                 <span className="numeric w-10 text-right text-[10px] text-outline">{row.share}%</span>

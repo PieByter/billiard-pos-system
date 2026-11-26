@@ -26,6 +26,7 @@ async function main() {
     '../lib/services/orders'
   );
   const { payBill, applyBillDiscount, voidBill } = await import('../lib/services/payments');
+  const { refundPayment } = await import('../lib/services/refunds');
   const { openShift, closeShift } = await import('../lib/services/shifts');
 
   const db = await getDb();
@@ -117,12 +118,49 @@ async function main() {
 
   await markTableReady(billiard.id, cashier.id);
 
+  const [owner] = await db
+    .select()
+    .from(schema.profiles)
+    .where(eq(schema.profiles.role, 'owner'))
+    .limit(1);
+  assert(owner, 'owner seed tersedia');
+
+  const [paymentRow] = await db
+    .select()
+    .from(schema.payments)
+    .where(eq(schema.payments.billId, started.billId))
+    .limit(1);
+  assert(paymentRow, 'payment bill tersedia');
+  const refund = await refundPayment(owner.id, {
+    billId: started.billId,
+    paymentId: paymentRow.id,
+    amount: 10_000,
+    category: 'fnb',
+    reason: 'Integration refund',
+  });
+  assert(refund.refundedTotal === 10_000, 'refund partial tersimpan');
+
+  let overRefundBlocked = false;
+  try {
+    await refundPayment(owner.id, {
+      billId: started.billId,
+      paymentId: paymentRow.id,
+      amount: paymentRow.amount,
+      category: 'fnb',
+      reason: 'should fail',
+    });
+  } catch (error) {
+    overRefundBlocked = error instanceof Error && error.message.includes('melebihi sisa');
+  }
+  assert(overRefundBlocked, 'refund melebihi sisa payment ditolak');
+
   const closed = await closeShift(
     cashier.id,
-    500_000 + stopped.billTotal,
+    500_000 + stopped.billTotal - 10_000,
     'Integration shift close',
   );
-  assert(closed.difference === 0, 'kas shift match');
+  assert(closed.difference === 0, 'kas shift match setelah refund');
+  assert(closed.expectedCash === 500_000 + stopped.billTotal - 10_000, 'expected cash net refund');
 
   /* --------------------------- Customer + KDS ------------------------------ */
   const idem = crypto.randomUUID();
@@ -170,12 +208,6 @@ async function main() {
   assert(oversellBlocked, 'oversell stok 0 ditolak');
 
   /* ------------------------- Discount (owner only) ------------------------- */
-  const [owner] = await db
-    .select()
-    .from(schema.profiles)
-    .where(eq(schema.profiles.role, 'owner'))
-    .limit(1);
-  assert(owner, 'owner seed tersedia');
   const [cafeBill] = await db
     .select()
     .from(schema.bills)

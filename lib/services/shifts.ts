@@ -1,6 +1,6 @@
 import { and, count, eq, gte, sql } from 'drizzle-orm';
 import { getDb, dbNow } from '@/lib/db';
-import { bills, payments, shifts } from '@/lib/db/schema';
+import { bills, payments, refunds, shifts } from '@/lib/db/schema';
 import { AppError, isUniqueViolation } from '@/lib/errors';
 import { audit } from './audit';
 
@@ -89,8 +89,20 @@ export async function closeShift(
           gte(payments.createdAt, shift.openedAt),
         ),
       );
+    const [cashRefundRow] = await tx
+      .select({ total: sql<number>`coalesce(sum(${refunds.amount}), 0)::int` })
+      .from(refunds)
+      .innerJoin(payments, eq(refunds.paymentId, payments.id))
+      .where(
+        and(
+          eq(payments.method, 'cash'),
+          gte(refunds.createdAt, shift.openedAt),
+        ),
+      );
 
-    const expected = shift.openingCash + (cashRow?.total ?? 0);
+    const cashSales = cashRow?.total ?? 0;
+    const cashRefunds = cashRefundRow?.total ?? 0;
+    const expected = shift.openingCash + cashSales - cashRefunds;
     const difference = actual - expected;
 
     const [closed] = await tx
@@ -115,7 +127,8 @@ export async function closeShift(
       entityId: shift.id,
       detail: {
         openingCash: shift.openingCash,
-        cashSales: cashRow?.total ?? 0,
+        cashSales,
+        cashRefunds,
         expectedCash: expected,
         actualCash: actual,
         difference,

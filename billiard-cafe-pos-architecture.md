@@ -360,18 +360,20 @@ Setelah keputusan di atas dipilih, scaffold repo lengkap meliputi:
 4. Halaman customer `/t/[token]`
 5. Layar dapur (Realtime)
 
-> **Status:** kelima langkah di atas sudah diimplementasi di v1. Mulai bagian 11, daftar di bawah adalah fitur yang **belum dimulai** dan menjadi backlog resmi pengembangan berikutnya.
+> **Status:** kelima langkah di atas sudah diimplementasi di v1. Mulai bagian 11, daftar di bawah adalah backlog resmi pengembangan berikutnya; item **#1 dan #2 sudah selesai di v1.1**.
 
 ---
 
-## 11. Roadmap fitur lanjutan (belum dimulai)
+## 11. Roadmap fitur lanjutan
 
 Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu, baru optimasi revenue, lalu kedalaman operasional, terakhir skala teknis.** Setiap item wajib mengikuti Definition of Done di §11.7.
+
+**Status implementasi:** item **#1 (refund manual)** dan **#2 (staff & venue settings)** sudah diimplementasi di v1.1. Sisa item masih backlog.
 
 ### 11.1 Fase 1 — Operasional harian
 
 #### 1. Refund / void setelah pembayaran
-**Status:** belum dimulai · **Prioritas:** P0 · **Dependensi:** —
+**Status:** selesai sebagian (refund manual v1.1; refund gateway menyusul di #6) · **Prioritas:** P0 · **Dependensi:** —
 
 **Masalah:** `voidBill` menolak bill yang sudah memiliki payment dan menyebut “refund flow”, tetapi flow refund belum ada. Kasir tidak punya jalur resmi untuk membatalkan transaksi yang sudah lunas.
 
@@ -389,10 +391,12 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Refund gateway memanggil provider refund API dan menangani webhook gagal/duplikat.
 - Tidak bisa refund dua kali untuk payment yang sama melebihi nominal.
 
-**Dampak skema:** tabel `refunds` (`billId`, `paymentId`, `amount`, `method`, `reason`, `restocked`, `approvedBy`, `externalRef`, `createdAt`); kolom agregat `bills.refundedAmount`; status payment/refund.
+**Dampak skema:** tabel `refunds` (`billId`, `paymentId`, `amount`, `category`, `reason`, `restocked`, `approvedBy`, `externalRef`, `createdAt`); kolom agregat `bills.refundedAmount`; status payment/refund.
+
+**Implementasi v1.1:** `/staff/admin/refunds`, `lib/services/refunds.ts`, `refundPaymentAction` (owner-only), laporan neto, expected cash shift, struk bill, audit `bill.refunded`. Refund gateway belum; UI menandai refund manual.
 
 #### 2. Staff management & venue settings
-**Status:** belum dimulai · **Prioritas:** P0 · **Dependensi:** Supabase service role / invite flow
+**Status:** selesai sebagian (v1.1; invite email & jam buka/tutup belum) · **Prioritas:** P0 · **Dependensi:** Supabase service role / invite flow
 
 **Masalah:** staff masih di-provision lewat seed/SQL, dan pajak/service charge/jam operasional belum bisa diubah owner dari UI.
 
@@ -410,6 +414,8 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Bill baru memakai tarif pajak/service terbaru; bill lama tidak berubah.
 
 **Dampak skema:** tabel `venue_settings` (singleton per outlet), perluasan `profiles` bila perlu; provisioning auth di server action dengan service role.
+
+**Implementasi v1.1:** `/staff/admin/staff` dan `/staff/admin/settings`, `lib/services/staff.ts`, `lib/services/settings.ts`, `venue_settings` (PB1/service/warning/footer), provisioning Supabase Auth via service role, snapshot pajak/service di `ensureOpenBill`. Invite email dan jam buka/tutup belum.
 
 #### 3. Peak/off-peak rate otomatis
 **Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #2 settings
@@ -749,7 +755,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 **Dampak skema:** `penalty_rules`, `penalties` (`billId`, `reservationId`, `assetId`, `sessionId`, `type`, `amount`, `status`, `reason`, `evidenceUrl`, `approvedBy`, `waivedReason`, `periodStart`, `uniqueKey`, `createdAt`); kolom agregat `bills.penaltyAmount`; update `recalcBillTotals`, struk, laporan, dan shift cash.
 
 ### 11.6 Urutan sprint yang disarankan
-1. **Sprint 1:** #1 Refund, #2 Staff & settings.
+1. **Sprint 1 (selesai v1.1):** #1 Refund manual, #2 Staff & settings.
 2. **Sprint 2:** #3 Tarif otomatis, #4 Reservation & waitlist, #20 Denda overtime/no-show.
 3. **Sprint 3:** #5 Split per item/seat, #13 Kas & shift lanjutan.
 4. **Sprint 4:** #6 Payment gateway, #9 E-receipt.

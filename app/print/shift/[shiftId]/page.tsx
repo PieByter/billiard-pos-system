@@ -39,8 +39,12 @@ export default async function ShiftPrintPage({
 
       <div className="mx-auto w-[302px] bg-white p-3 font-mono text-[10px] leading-[1.45] text-black shadow-xl print:w-[80mm] print:shadow-none">
         <div className="text-center">
-          <div className="text-[15px] font-extrabold tracking-[0.16em]">CUE &amp; TAP</div>
-          <div className="text-[9px] uppercase tracking-[0.16em]">Billiard Hall &amp; Lounge</div>
+          <div className="text-[15px] font-extrabold uppercase tracking-[0.16em]">
+            {data.venueName}
+          </div>
+          <div className="text-[9px] uppercase tracking-[0.16em]">
+            {data.venueAddress || 'Billiard Hall & Lounge'}
+          </div>
           <div className="mt-1 border-y-2 border-black py-1 text-[13px] font-extrabold tracking-[0.2em]">
             {interim ? 'X-REPORT' : 'Z-REPORT'}
           </div>
@@ -99,8 +103,14 @@ export default async function ShiftPrintPage({
             value={formatRp(total.amount)}
           />
         ))}
+        {data.refundTotal > 0 ? (
+          <div className="mt-1 flex justify-between text-[10px]">
+            <span>Refund ({data.refunds.length}x)</span>
+            <span>− {formatRp(data.refundTotal)}</span>
+          </div>
+        ) : null}
         <div className="mt-1 flex justify-between border-t border-black pt-1 text-[12px] font-extrabold">
-          <span>TOTAL OMZET</span>
+          <span>TOTAL OMZET NETO</span>
           <span>{formatRp(data.totalRevenue)}</span>
         </div>
 
@@ -129,6 +139,27 @@ export default async function ShiftPrintPage({
           <div className="py-1 text-center text-[8px]">
             +{data.payments.length - 40} transaksi lainnya di sistem
           </div>
+        ) : null}
+
+        {data.refunds.length > 0 ? (
+          <>
+            <ReceiptDivider />
+            <div className="font-bold uppercase tracking-wider">Refund ({data.refunds.length})</div>
+            {data.refunds.slice(0, 20).map((refund) => (
+              <div key={refund.id} className="border-b border-dotted border-black/20 py-0.5">
+                <div className="flex justify-between">
+                  <span>
+                    {refund.tableCode} · {refund.billNumber.slice(-8)}
+                  </span>
+                  <span className="font-semibold">− {formatRp(refund.amount)}</span>
+                </div>
+                <div className="flex justify-between text-[8px] text-black/60">
+                  <span>{PAY_METHOD_LABELS[refund.method]}</span>
+                  <span>{formatClock(refund.createdAt)}</span>
+                </div>
+              </div>
+            ))}
+          </>
         ) : null}
 
         <ReceiptDivider />
