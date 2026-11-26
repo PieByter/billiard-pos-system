@@ -15,6 +15,13 @@ const NAV_ITEMS = [
     roles: ['owner', 'cashier'] as ProfileRole[],
   },
   {
+    href: '/staff/reservations',
+    label: 'Reservasi',
+    short: 'Booking',
+    icon: 'event_available',
+    roles: ['owner', 'cashier'] as ProfileRole[],
+  },
+  {
     href: '/staff/kitchen',
     label: 'Kitchen Display',
     short: 'KDS',

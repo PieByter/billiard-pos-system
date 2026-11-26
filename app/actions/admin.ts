@@ -17,6 +17,7 @@ import {
 } from '@/lib/services/admin';
 import { saveStaff, setStaffActive } from '@/lib/services/staff';
 import { saveVenueSettings } from '@/lib/services/settings';
+import { saveRateSchedule, toggleRateSchedule } from '@/lib/services/rate-schedules';
 
 export async function saveStaffAction(input: {
   id?: string;
@@ -85,6 +86,49 @@ export async function saveVenueSettingsAction(input: {
       input,
     );
     const result = await saveVenueSettings(staff.id, data);
+    revalidateOps();
+    return result;
+  });
+}
+
+export async function saveRateScheduleAction(input: {
+  id?: string;
+  tableId: string;
+  rateId: string;
+  daysOfWeek: number[];
+  startMinute: number;
+  endMinute: number;
+  priority?: number;
+  active?: boolean;
+}): Promise<ActionResult<{ id: string }>> {
+  return runAction(async () => {
+    const staff = await requireStaffAction(['owner']);
+    const data = parseOrThrow(
+      z.object({
+        id: z.string().uuid().optional(),
+        tableId: z.string().uuid(),
+        rateId: z.string().uuid(),
+        daysOfWeek: z.array(z.coerce.number().int().min(1).max(7)).min(1).max(7),
+        startMinute: z.coerce.number().int().min(0).max(1439),
+        endMinute: z.coerce.number().int().min(1).max(1440),
+        priority: z.coerce.number().int().min(0).max(100).optional(),
+        active: z.boolean().optional(),
+      }),
+      input,
+    );
+    const result = await saveRateSchedule(staff.id, data);
+    revalidateOps();
+    return result;
+  });
+}
+
+export async function toggleRateScheduleAction(
+  scheduleId: string,
+): Promise<ActionResult<{ active: boolean }>> {
+  return runAction(async () => {
+    const staff = await requireStaffAction(['owner']);
+    const data = parseOrThrow(z.string().uuid(), scheduleId);
+    const result = await toggleRateSchedule(staff.id, data);
     revalidateOps();
     return result;
   });

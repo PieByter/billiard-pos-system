@@ -200,6 +200,20 @@ export async function seedDatabase(db: AppDb, options: SeedOptions = {}): Promis
       .returning();
     const tableByCode = new Map(tableRows.map((table) => [table.code, table]));
 
+    /* ------------------------- Rate schedules -------------------------- */
+    const happyHourTable = tableByCode.get('B7');
+    const vipRate = rateByName.get('VIP 9ft');
+    if (happyHourTable && vipRate) {
+      await tx.insert(s.tableRateSchedules).values({
+        tableId: happyHourTable.id,
+        rateId: vipRate.id,
+        daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+        startMinute: 17 * 60,
+        endMinute: 23 * 60,
+        priority: 10,
+      });
+    }
+
     /* --------------------------- Menu catalog -------------------------- */
     const categoryDefs = [
       { name: 'Coffee & Tea', icon: 'local_cafe' },

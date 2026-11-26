@@ -35,6 +35,28 @@ export const stationEnum = pgEnum('station', ['kitchen', 'bar']);
 export const shiftStatusEnum = pgEnum('shift_status', ['open', 'closed']);
 export const serviceRequestTypeEnum = pgEnum('service_request_type', ['waiter', 'bill', 'assistance']);
 export const serviceRequestStatusEnum = pgEnum('service_request_status', ['open', 'done', 'cancelled']);
+export const reservationStatusEnum = pgEnum('reservation_status', [
+  'pending',
+  'confirmed',
+  'checked_in',
+  'completed',
+  'cancelled',
+  'no_show',
+]);
+export const depositStatusEnum = pgEnum('deposit_status', [
+  'none',
+  'pending',
+  'paid',
+  'refunded',
+  'forfeited',
+]);
+export const waitlistStatusEnum = pgEnum('waitlist_status', [
+  'waiting',
+  'called',
+  'seated',
+  'cancelled',
+  'no_show',
+]);
 
 /* -------------------------------------------------------------------------- */
 /*                                  Profiles                                  */
@@ -97,6 +119,32 @@ export const venueTables = pgTable(
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('venue_tables_kind_idx').on(t.kind, t.sortOrder)],
+).enableRLS();
+
+export const tableRateSchedules = pgTable(
+  'table_rate_schedules',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tableId: uuid()
+      .notNull()
+      .references(() => venueTables.id, { onDelete: 'cascade' }),
+    rateId: uuid()
+      .notNull()
+      .references(() => billiardRates.id, { onDelete: 'restrict' }),
+    // ISO weekday: 1 = Senin ... 7 = Minggu.
+    daysOfWeek: jsonb().$type<number[]>().notNull().default([1, 2, 3, 4, 5, 6, 7]),
+    // Menit sejak 00:00 Asia/Jakarta. Rentang [startMinute, endMinute).
+    startMinute: integer().notNull(),
+    endMinute: integer().notNull(),
+    priority: integer().notNull().default(0),
+    active: boolean().notNull().default(true),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('table_rate_schedules_table_idx').on(t.tableId, t.active),
+    index('table_rate_schedules_rate_idx').on(t.rateId),
+  ],
 ).enableRLS();
 
 /* -------------------------------------------------------------------------- */
@@ -307,6 +355,62 @@ export const refunds = pgTable(
   ],
 ).enableRLS();
 
+export const reservations = pgTable(
+  'reservations',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    code: text().notNull().unique(),
+    tableId: uuid()
+      .notNull()
+      .references(() => venueTables.id, { onDelete: 'restrict' }),
+    guestName: text().notNull(),
+    phone: text(),
+    partySize: integer().notNull().default(2),
+    startAt: timestamp({ withTimezone: true }).notNull(),
+    endAt: timestamp({ withTimezone: true }).notNull(),
+    status: reservationStatusEnum().notNull().default('pending'),
+    depositAmount: integer().notNull().default(0),
+    depositStatus: depositStatusEnum().notNull().default('none'),
+    note: text(),
+    billId: uuid().references(() => bills.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    sessionId: uuid().references(() => billiardSessions.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    createdBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    checkedInAt: timestamp({ withTimezone: true }),
+    cancelledAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('reservations_start_idx').on(t.startAt, t.status),
+    index('reservations_table_idx').on(t.tableId, t.startAt),
+  ],
+).enableRLS();
+
+export const waitlistEntries = pgTable(
+  'waitlist_entries',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    code: text().notNull().unique(),
+    guestName: text().notNull(),
+    phone: text(),
+    partySize: integer().notNull().default(2),
+    preference: tableKindEnum().notNull().default('billiard'),
+    status: waitlistStatusEnum().notNull().default('waiting'),
+    estimatedWaitMinutes: integer().notNull().default(15),
+    note: text(),
+    createdBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    calledAt: timestamp({ withTimezone: true }),
+    seatedAt: timestamp({ withTimezone: true }),
+    cancelledAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('waitlist_status_idx').on(t.status, t.createdAt)],
+).enableRLS();
+
 /* -------------------------------------------------------------------------- */
 /*                                   Shift                                    */
 /* -------------------------------------------------------------------------- */
@@ -386,6 +490,9 @@ export type OrderItem = typeof orderItems.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type Refund = typeof refunds.$inferSelect;
 export type VenueSettings = typeof venueSettings.$inferSelect;
+export type TableRateSchedule = typeof tableRateSchedules.$inferSelect;
+export type Reservation = typeof reservations.$inferSelect;
+export type WaitlistEntry = typeof waitlistEntries.$inferSelect;
 export type Shift = typeof shifts.$inferSelect;
 export type AuditEntry = typeof auditLog.$inferSelect;
 export type ServiceRequest = typeof serviceRequests.$inferSelect;

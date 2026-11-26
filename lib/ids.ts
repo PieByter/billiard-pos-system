@@ -41,6 +41,14 @@ export function serviceRequestNumber(): string {
   return `REQ-${randomDigits(5)}`;
 }
 
+export function reservationCode(): string {
+  return `RES-${randomCode(6).toUpperCase()}`;
+}
+
+export function waitlistCode(): string {
+  return `WL-${randomCode(5).toUpperCase()}`;
+}
+
 export function newIdempotencyKey(): string {
   return crypto.randomUUID();
 }

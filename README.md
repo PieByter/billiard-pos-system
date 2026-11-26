@@ -20,10 +20,12 @@ worker).
 |---|---|
 | `/login` | Login staff, quick-login demo, branding venue |
 | `/staff/cashier` | Matrix 8 meja billiard + 12 meja cafe, timer live, pause/resume, stop & pay, pindah meja, order F&B, split payment, QR per meja, approval self-order, panggilan waiter |
+| `/staff/reservations` | Reservasi meja, cek konflik, deposit, check-in ke sesi/bill, waitlist walk-in (panggil/duduk/no-show) |
 | `/staff/kitchen` | KDS 3 lane (Baru / Dimasak / Siap Antar), filter station, checklist item, overdue >12m, buzzer, fullscreen, print tiket |
 | `/staff/admin` | KPI shift, balancing kas + hitung per pecahan, komposisi pembayaran, master tarif, audit log, riwayat shift, X/Z report |
 | `/staff/admin/menu` | CRUD menu, harga, stok, station, best seller, availability |
 | `/staff/admin/tables` | CRUD meja, tarif, flag self-order, QR generation & rotasi token |
+| `/staff/admin/schedules` | Jadwal tarif peak/off-peak per meja: hari, jam, prioritas, preview tarif |
 | `/staff/admin/reports` | Omzet 7/14/30 hari, billiard vs F&B, metode bayar, top menu & meja, refund, export CSV |
 | `/staff/admin/refunds` | Refund pembayaran bill lunas (partial/full), kategori refund, restock stok, riwayat refund |
 | `/staff/admin/staff` | CRUD staff, role, aktif/nonaktif, reset akses, provisioning Supabase Auth |
@@ -45,6 +47,8 @@ worker).
 - **Stok atomik** (`stock >= qty` di dalam `UPDATE`) sehingga tidak oversell.
 - **Refund append-only** per payment; laporan dan expected cash shift memakai nilai neto setelah refund.
 - **Snapshot venue settings**: perubahan PB1/service hanya berlaku untuk bill baru.
+- **Tarif otomatis per jadwal**: `table_rate_schedules` memilih rate berdasarkan hari/jam Asia/Jakarta dan prioritas; tarif di-snapshot saat start.
+- **Reservasi & waitlist**: cek overlap, deposit tercatat, check-in membuat bill/sesi; waitlist walk-in terpisah.
 - **Audit log append-only** untuk start/stop sesi, pause, order, void, diskon, refund, staff, settings, shift, rotasi QR, dll.
 - **Role guard server-side**: owner / cashier / kitchen. Admin hanya owner; staff nonaktif langsung ditolak.
 - **PWA**: installable, cache menu yang pernah dibuka, halaman `/offline`, print browser 80mm.
@@ -296,11 +300,10 @@ public/                         # manifest, sw.js, icons
 | Stock | Opsional per menu (`stock = null` = tak dilacak). |
 
 ### Belum termasuk v1 (roadmap)
-Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (20 item; refund manual, staff management, dan venue settings sudah ada). Ringkasannya:
+Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (20 item; refund manual, staff/settings, jadwal tarif, dan reservasi sudah ada). Ringkasannya:
 
 Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi eksternal, bukan karena terlewat:
 
-- **Auto-switch tarif peak/off-peak.** Saat ini tarif dipilih per meja dan di-snapshot saat start. Untuk harga otomatis per jam/hari butuh tabel jadwal tarif + UI pengaturan.
 - **QRIS create-charge / refund otomatis.** Refund manual sudah tersedia di Admin → Refund; pembuatan QR dinamis dan refund otomatis butuh payment gateway (Midtrans/Xendit).
 - **Denda & penalty engine.** Overtime sesi, no-show reservasi, kerusakan/kehilangan alat, dan denda manual belum ada aturan, approval, atau pencatatan di bill.
 - **Offline write queue.** PWA menyimpan menu read-only; order/pembayaran tetap butuh jaringan (sesuai PRD v1).
@@ -351,6 +354,10 @@ Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi e
 - [ ] Refund melebihi sisa payment ditolak; refund pada bill open/void ditolak.
 - [ ] Staff: tambah staff → login; nonaktifkan → login ditolak; owner terakhir tidak bisa dinonaktifkan.
 - [ ] Settings: ubah PB1/service → hanya bill baru berubah; bill berjalan tetap snapshot lama.
+- [ ] Jadwal tarif: buat jadwal aktif sekarang → dialog start menampilkan tarif jadwal; start sesi memakai tarif itu.
+- [ ] Jadwal overlap → prioritas tertinggi menang; nonaktifkan jadwal → fallback ke tarif default.
+- [ ] Reservasi: buat booking → konflik jadwal ditolak; check-in membuat bill/sesi; no-show/cancel tercatat.
+- [ ] Waitlist: tambah → panggil → duduk; status dan waktu tercatat.
 - [ ] Tutup shift dengan bill open (harus ditolak); setelah semua bill lunas → Z-report.
 - [ ] Webhook payment: signature salah 401, dobel 200 idempoten, nominal salah 400.
 - [ ] QR: copy link, buka incognito, rotate token → link lama 404.

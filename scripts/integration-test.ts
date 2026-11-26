@@ -28,6 +28,15 @@ async function main() {
   const { payBill, applyBillDiscount, voidBill } = await import('../lib/services/payments');
   const { refundPayment } = await import('../lib/services/refunds');
   const { openShift, closeShift } = await import('../lib/services/shifts');
+  const {
+    createReservation,
+    createWaitlistEntry,
+    setReservationStatus,
+    setWaitlistStatus,
+  } = await import('../lib/services/reservations');
+  const { saveRateSchedule, previewRateForTable, toggleRateSchedule } = await import(
+    '../lib/services/rate-schedules'
+  );
 
   const db = await getDb();
 
@@ -221,6 +230,75 @@ async function main() {
     'Integration discount',
   );
   assert(discounted.discount === 5_000, 'diskon tersimpan');
+
+  /* --------------------------- Reservation ------------------------------- */
+  const [billiardTable] = await db
+    .select()
+    .from(schema.venueTables)
+    .where(eq(schema.venueTables.code, 'B8'))
+    .limit(1);
+  assert(billiardTable, 'meja B8 tersedia');
+  const reservationDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(Date.now() + 86_400_000));
+  const reservation = await createReservation(cashier.id, {
+    tableId: billiardTable.id,
+    guestName: 'Reservation Test',
+    partySize: 2,
+    date: reservationDate,
+    startTime: '19:00',
+    durationMinutes: 60,
+    depositAmount: 50_000,
+  });
+  assert(reservation.code.startsWith('RES-'), 'reservasi dibuat');
+
+  let overlapBlocked = false;
+  try {
+    await createReservation(cashier.id, {
+      tableId: billiardTable.id,
+      guestName: 'Overlap Test',
+      partySize: 2,
+      date: reservationDate,
+      startTime: '19:30',
+      durationMinutes: 60,
+    });
+  } catch (error) {
+    overlapBlocked = error instanceof Error && error.message.includes('dibooking');
+  }
+  assert(overlapBlocked, 'reservasi overlap ditolak');
+  await setReservationStatus(cashier.id, reservation.id, 'cancelled');
+
+  const waitlist = await createWaitlistEntry(cashier.id, {
+    guestName: 'Waitlist Test',
+    partySize: 2,
+    preference: 'billiard',
+  });
+  await setWaitlistStatus(cashier.id, waitlist.id, 'called');
+  const seated = await setWaitlistStatus(cashier.id, waitlist.id, 'seated');
+  assert(seated.status === 'seated', 'waitlist bisa dipanggil dan duduk');
+
+  /* --------------------------- Rate schedule ----------------------------- */
+  const [privateRate] = await db
+    .select()
+    .from(schema.billiardRates)
+    .where(eq(schema.billiardRates.name, 'VIP Private Room'))
+    .limit(1);
+  assert(privateRate, 'rate VIP private tersedia');
+  const schedule = await saveRateSchedule(owner.id, {
+    tableId: billiardTable.id,
+    rateId: privateRate.id,
+    daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+    startMinute: 0,
+    endMinute: 1440,
+    priority: 50,
+  });
+  const preview = await previewRateForTable(billiardTable.id);
+  assert(preview.scheduleId === schedule.id, 'jadwal tarif aktif terdeteksi');
+  assert(preview.rate?.id === privateRate.id, 'rate jadwal dipakai untuk preview');
+  await toggleRateSchedule(owner.id, schedule.id);
 
   console.log('INTEGRATION PASS', {
     shift: shift.shiftId,

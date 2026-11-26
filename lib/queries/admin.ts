@@ -15,6 +15,7 @@ import {
   refunds,
   serviceRequests,
   shifts,
+  tableRateSchedules,
   venueSettings,
   venueTables,
 } from '@/lib/db/schema';
@@ -24,6 +25,7 @@ import type {
   MenuAdminData,
   PaymentBreakdown,
   PayMethod,
+  RateSchedulesAdminData,
   RefundAdminData,
   ReportData,
   ReportDay,
@@ -754,6 +756,61 @@ export async function getStaffSettingsData(): Promise<StaffSettingsData> {
     authMode: auth,
     canProvisionAuth:
       auth === 'demo' || (auth === 'supabase' && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)),
+  };
+}
+
+export async function getRateSchedulesAdminData(): Promise<RateSchedulesAdminData> {
+  const db = await getDb();
+  const [tableRows, rateRows, scheduleRows] = await Promise.all([
+    db
+      .select({
+        table: venueTables,
+        rateName: billiardRates.name,
+      })
+      .from(venueTables)
+      .leftJoin(billiardRates, eq(venueTables.rateId, billiardRates.id))
+      .where(and(eq(venueTables.kind, 'billiard'), eq(venueTables.active, true)))
+      .orderBy(asc(venueTables.sortOrder), asc(venueTables.code)),
+    db.select().from(billiardRates).orderBy(asc(billiardRates.sortOrder)),
+    db
+      .select({
+        schedule: tableRateSchedules,
+        tableCode: venueTables.code,
+        rateName: billiardRates.name,
+        pricePerHour: billiardRates.pricePerHour,
+      })
+      .from(tableRateSchedules)
+      .innerJoin(venueTables, eq(tableRateSchedules.tableId, venueTables.id))
+      .innerJoin(billiardRates, eq(tableRateSchedules.rateId, billiardRates.id))
+      .orderBy(
+        asc(venueTables.sortOrder),
+        asc(tableRateSchedules.startMinute),
+        desc(tableRateSchedules.priority),
+      ),
+  ]);
+
+  return {
+    tables: tableRows.map((row) => ({
+      id: row.table.id,
+      code: row.table.code,
+      zone: row.table.zone,
+      rateId: row.table.rateId,
+      rateName: row.rateName,
+    })),
+    rates: rateRows.map(mapRate),
+    schedules: scheduleRows.map((row) => ({
+      id: row.schedule.id,
+      tableId: row.schedule.tableId,
+      tableCode: row.tableCode,
+      rateId: row.schedule.rateId,
+      rateName: row.rateName,
+      pricePerHour: row.pricePerHour,
+      daysOfWeek: row.schedule.daysOfWeek,
+      startMinute: row.schedule.startMinute,
+      endMinute: row.schedule.endMinute,
+      priority: row.schedule.priority,
+      active: row.schedule.active,
+    })),
   };
 }
 

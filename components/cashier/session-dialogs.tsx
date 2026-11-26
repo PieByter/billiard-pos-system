@@ -3,7 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { moveBillAction, startSessionAction } from '@/app/actions/sessions';
+import {
+  getRatePreviewAction,
+  moveBillAction,
+  startSessionAction,
+} from '@/app/actions/sessions';
 import { openShiftAction } from '@/app/actions/shifts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -30,6 +34,11 @@ export function StartSessionDialog({
   const [guestName, setGuestName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{
+    rate: TableView['rate'];
+    scheduleLabel: string | null;
+    jakartaTime: string;
+  } | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -38,6 +47,32 @@ export function StartSessionDialog({
       setLoading(false);
     }
   }, [open, table?.id]);
+
+  useEffect(() => {
+    if (!open || !table) {
+      setPreview(null);
+      return;
+    }
+    setPreview(null);
+    let cancelled = false;
+    void getRatePreviewAction(table.id).then((result) => {
+      if (cancelled) return;
+      setPreview(
+        result.ok && result.data
+          ? {
+              rate: result.data.rate,
+              scheduleLabel: result.data.scheduleLabel,
+              jakartaTime: result.data.jakartaTime,
+            }
+          : null,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, table?.id]);
+
+  const activeRate = preview?.rate ?? table?.rate ?? null;
 
   async function submit() {
     if (!table) return;
@@ -50,7 +85,9 @@ export function StartSessionDialog({
       return;
     }
     toast.success(`Sesi ${table.code} dimulai`, {
-      description: `Timer berjalan · ${formatRp(table.rate?.pricePerHour ?? 0)}/jam`,
+      description: `Timer berjalan · ${formatRp(
+        result.data?.ratePerHour ?? activeRate?.pricePerHour ?? 0,
+      )}/jam${preview?.scheduleLabel ? ` · jadwal ${preview.scheduleLabel}` : ''}`,
     });
     setLoading(false);
     onClose();
@@ -75,7 +112,7 @@ export function StartSessionDialog({
             variant="primary"
             onClick={submit}
             loading={loading}
-            disabled={!table?.rate}
+            disabled={!activeRate}
           >
             <Icon name="timer" className="text-[18px]" />
             Mulai timer
@@ -98,9 +135,18 @@ export function StartSessionDialog({
             <div className="text-right">
               <span className="text-[10px] uppercase tracking-wider text-outline">Tarif</span>
               <p className="numeric text-numeric-md font-bold text-primary">
-                {table.rate ? formatRp(table.rate.pricePerHour) : '—'}
+                {activeRate ? formatRp(activeRate.pricePerHour) : '—'}
                 <span className="text-[11px] font-normal text-on-surface-variant"> /jam</span>
               </p>
+              {preview?.scheduleLabel ? (
+                <Badge tone="paused" className="mt-1">
+                  Jadwal {preview.scheduleLabel}
+                </Badge>
+              ) : (
+                <span className="mt-1 block text-[10px] text-outline">
+                  Tarif default{preview ? ` · ${preview.jakartaTime} WIB` : ''}
+                </span>
+              )}
             </div>
           </div>
 
@@ -115,24 +161,29 @@ export function StartSessionDialog({
             hint="Opsional"
           />
 
-          {table.rate ? (
+          {activeRate ? (
             <div className="rounded-xl border border-primary/20 bg-primary/[0.06] p-3">
               <div className="flex items-center justify-between text-body-sm">
                 <span className="text-on-surface-variant">Minimal durasi</span>
                 <span className="numeric font-semibold text-on-surface">
-                  {table.rate.minMinutes} menit
+                  {activeRate.minMinutes} menit
                 </span>
               </div>
               <div className="mt-1 flex items-center justify-between text-body-sm">
                 <span className="text-on-surface-variant">Kelipatan billing</span>
                 <span className="numeric font-semibold text-on-surface">
-                  {table.rate.incrementMinutes} menit (pro-rata)
+                  {activeRate.incrementMinutes} menit (pro-rata)
                 </span>
               </div>
               <div className="mt-1 flex items-center justify-between text-body-sm">
                 <span className="text-on-surface-variant">Pembulatan</span>
                 <span className="numeric font-semibold text-on-surface">Rp 500 terdekat</span>
               </div>
+              {preview?.scheduleLabel ? (
+                <div className="mt-2 border-t border-primary/15 pt-2 text-[10px] text-on-surface-variant">
+                  Jadwal tarif aktif untuk jam ini. Tarif di-snapshot saat start.
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="rounded-lg border border-error/30 bg-error/10 p-3 text-body-sm text-error">

@@ -12,6 +12,16 @@ import {
   startBilliardSession,
   stopBilliardSession,
 } from '@/lib/services/sessions';
+import { previewRateForTable } from '@/lib/services/rate-schedules';
+
+export async function getRatePreviewAction(
+  tableId: string,
+): Promise<ActionResult<Awaited<ReturnType<typeof previewRateForTable>>>> {
+  return runAction(async () => {
+    await requireStaffAction(['cashier', 'owner']);
+    return previewRateForTable(tableId);
+  });
+}
 
 export async function startSessionAction(
   tableId: string,

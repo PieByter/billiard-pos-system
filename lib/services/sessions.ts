@@ -1,12 +1,6 @@
 import { and, eq, ne } from 'drizzle-orm';
 import { getDb, dbNow } from '@/lib/db';
-import {
-  billiardRates,
-  billiardSessions,
-  bills,
-  orders,
-  venueTables,
-} from '@/lib/db/schema';
+import { billiardSessions, bills, orders, venueTables } from '@/lib/db/schema';
 import {
   billableElapsedSeconds,
   computeSessionAmount,
@@ -15,6 +9,7 @@ import {
 import { AppError, isUniqueViolation } from '@/lib/errors';
 import { ensureOpenBill, recalcBillTotals } from './bill';
 import { audit } from './audit';
+import { resolveRateForTable } from './rate-schedules';
 
 export async function startBilliardSession(
   tableId: string,
@@ -25,13 +20,8 @@ export async function startBilliardSession(
   try {
     return await db.transaction(async (tx) => {
       const now = await dbNow(tx);
-      const [row] = await tx
-        .select({ table: venueTables, rate: billiardRates })
-        .from(venueTables)
-        .leftJoin(billiardRates, eq(venueTables.rateId, billiardRates.id))
-        .where(and(eq(venueTables.id, tableId), eq(venueTables.active, true)))
-        .limit(1);
-      if (!row) throw new AppError('TABLE_NOT_FOUND', 'Meja tidak ditemukan.');
+      const resolved = await resolveRateForTable(tx, tableId, now);
+      const row = { table: resolved.table, rate: resolved.rate };
       if (row.table.kind !== 'billiard') {
         throw new AppError('WRONG_TABLE_KIND', 'Meja ini bukan meja billiard.');
       }

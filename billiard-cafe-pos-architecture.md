@@ -368,7 +368,7 @@ Setelah keputusan di atas dipilih, scaffold repo lengkap meliputi:
 
 Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu, baru optimasi revenue, lalu kedalaman operasional, terakhir skala teknis.** Setiap item wajib mengikuti Definition of Done di §11.7.
 
-**Status implementasi:** item **#1 (refund manual)** dan **#2 (staff & venue settings)** sudah diimplementasi di v1.1. Sisa item masih backlog.
+**Status implementasi:** item **#1 (refund manual)**, **#2 (staff & venue settings)**, **#3 (jadwal tarif)**, dan **#4 (reservasi/waitlist)** sudah diimplementasi di v1.1. Sisa item masih backlog.
 
 ### 11.1 Fase 1 — Operasional harian
 
@@ -418,7 +418,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 **Implementasi v1.1:** `/staff/admin/staff` dan `/staff/admin/settings`, `lib/services/staff.ts`, `lib/services/settings.ts`, `venue_settings` (PB1/service/warning/footer), provisioning Supabase Auth via service role, snapshot pajak/service di `ensureOpenBill`. Invite email dan jam buka/tutup belum.
 
 #### 3. Peak/off-peak rate otomatis
-**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #2 settings
+**Status:** selesai sebagian (v1.1; holiday override belum) · **Prioritas:** P1 · **Dependensi:** #2 settings
 
 **Masalah:** `billiard_rates` masih satu tarif per meja. “Happy Hour” hanya nama rate yang di-assign manual, belum otomatis berdasarkan jam/hari.
 
@@ -437,8 +437,10 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 
 **Dampak skema:** tabel `table_rate_schedules` (`tableId`, `rateId`, `daysOfWeek`, `startMinute`, `endMinute`, `priority`, `active`).
 
+**Implementasi v1.1:** `/staff/admin/schedules`, `lib/services/rate-schedules.ts`, `resolveRateForTable` dipakai `startBilliardSession`, preview tarif di dialog start, seed B7 17:00–23:00. Jadwal lintas tengah malam dan override hari libur belum.
+
 #### 4. Reservation & waitlist
-**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #2, #3
+**Status:** selesai sebagian (v1.1; deposit belum masuk ledger payment) · **Prioritas:** P1 · **Dependensi:** #2, #3
 
 **Masalah:** meja hanya bisa dipakai walk-in; belum ada booking, deposit, atau antrean.
 
@@ -456,6 +458,8 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Waitlist bisa dipanggil dan ditandai datang/batal.
 
 **Dampak skema:** `reservations`, `waitlist_entries`, relasi opsional ke `bills`/`payments`.
+
+**Implementasi v1.1:** `/staff/reservations`, `lib/services/reservations.ts`, cek overlap, deposit status (pending/paid/refunded/forfeited), check-in membuat sesi/bill, waitlist waiting → called → seated. Deposit belum masuk ledger `payments`; integrasi kas/payment menyusul.
 
 #### 5. Split bill per item/seat
 **Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #1
@@ -756,7 +760,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 
 ### 11.6 Urutan sprint yang disarankan
 1. **Sprint 1 (selesai v1.1):** #1 Refund manual, #2 Staff & settings.
-2. **Sprint 2:** #3 Tarif otomatis, #4 Reservation & waitlist, #20 Denda overtime/no-show.
+2. **Sprint 2 (sebagian selesai v1.1):** #3 Tarif otomatis, #4 Reservation & waitlist; #20 Denda overtime/no-show masih pending.
 3. **Sprint 3:** #5 Split per item/seat, #13 Kas & shift lanjutan.
 4. **Sprint 4:** #6 Payment gateway, #9 E-receipt.
 5. **Sprint 5:** #7 Membership, #8 Promo engine.

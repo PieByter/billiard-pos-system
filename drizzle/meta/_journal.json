@@ -15,6 +15,13 @@
       "when": 1795665318555,
       "tag": "0001_low_sandman",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795667387961,
+      "tag": "0002_large_vermin",
+      "breakpoints": true
     }
   ]
 }

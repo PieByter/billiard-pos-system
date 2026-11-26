@@ -338,6 +338,79 @@ export type CustomerOrderView = {
   subtotal: number;
 };
 
+export type ReservationView = {
+  id: string;
+  code: string;
+  tableId: string;
+  tableCode: string;
+  tableZone: string;
+  tableKind: TableKind;
+  guestName: string;
+  phone: string | null;
+  partySize: number;
+  startAt: string;
+  endAt: string;
+  status: 'pending' | 'confirmed' | 'checked_in' | 'completed' | 'cancelled' | 'no_show';
+  depositAmount: number;
+  depositStatus: 'none' | 'pending' | 'paid' | 'refunded' | 'forfeited';
+  note: string | null;
+  billId: string | null;
+  sessionId: string | null;
+  createdAt: string;
+};
+
+export type WaitlistView = {
+  id: string;
+  code: string;
+  guestName: string;
+  phone: string | null;
+  partySize: number;
+  preference: TableKind;
+  status: 'waiting' | 'called' | 'seated' | 'cancelled' | 'no_show';
+  estimatedWaitMinutes: number;
+  note: string | null;
+  createdAt: string;
+};
+
+export type ReservationsData = {
+  serverNow: string;
+  tables: Array<{
+    id: string;
+    code: string;
+    zone: string;
+    kind: TableKind;
+    capacity: number;
+  }>;
+  reservations: ReservationView[];
+  waitlist: WaitlistView[];
+};
+
+export type RateScheduleView = {
+  id: string;
+  tableId: string;
+  tableCode: string;
+  rateId: string;
+  rateName: string;
+  pricePerHour: number;
+  daysOfWeek: number[];
+  startMinute: number;
+  endMinute: number;
+  priority: number;
+  active: boolean;
+};
+
+export type RateSchedulesAdminData = {
+  tables: Array<{
+    id: string;
+    code: string;
+    zone: string;
+    rateId: string | null;
+    rateName: string | null;
+  }>;
+  rates: RateView[];
+  schedules: RateScheduleView[];
+};
+
 export type RefundAdminPaymentView = {
   id: string;
   method: PayMethod;
