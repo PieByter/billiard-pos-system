@@ -11,6 +11,7 @@ async function main() {
   rmSync(dbPath, { recursive: true, force: true });
   process.env.DEMO_DB_PATH = dbPath;
   process.env.CUETAP_SEED_MODE = 'catalog';
+  process.env.PAYMENT_GATEWAY = 'mock';
   delete process.env.DATABASE_URL;
 
   const { getDb } = await import('../lib/db');
@@ -36,6 +37,10 @@ async function main() {
   } = await import('../lib/services/reservations');
   const { saveRateSchedule, previewRateForTable, toggleRateSchedule } = await import(
     '../lib/services/rate-schedules'
+  );
+  const { createBillSplits, payBillSplit } = await import('../lib/services/splits');
+  const { createBillQrisIntent, settleQrisIntent } = await import(
+    '../lib/services/payment-intents'
   );
 
   const db = await getDb();
@@ -299,6 +304,57 @@ async function main() {
   assert(preview.scheduleId === schedule.id, 'jadwal tarif aktif terdeteksi');
   assert(preview.rate?.id === privateRate.id, 'rate jadwal dipakai untuk preview');
   await toggleRateSchedule(owner.id, schedule.id);
+
+  /* ------------------------------ Split bill ----------------------------- */
+  const splitStart = await startBilliardSession(billiardTable.id, cashier.id, 'Split Guest');
+  const splitOrder = await placeOrder({
+    actor: { type: 'staff', id: cashier.id, role: 'cashier' },
+    tableId: billiardTable.id,
+    idempotencyKey: crypto.randomUUID(),
+    items: [{ menuItemId: wings.id, qty: 1 }],
+  });
+  await stopBilliardSession(billiardTable.id, cashier.id);
+  const [splitItem] = await db
+    .select()
+    .from(schema.orderItems)
+    .where(eq(schema.orderItems.orderId, splitOrder.orderId))
+    .limit(1);
+  assert(splitItem, 'item split tersedia');
+  const split = await createBillSplits(cashier.id, splitStart.billId, [
+    { label: 'Pemain A', itemIds: [], sessionIds: [splitStart.sessionId] },
+    { label: 'Pemain B', itemIds: [splitItem.id], sessionIds: [] },
+  ]);
+  assert(split.splits.length === 2, 'split bill punya dua group');
+  const groupA = split.splits[0];
+  const groupB = split.splits[1];
+  const paidA = await payBillSplit(cashier.id, groupA.id, [
+    { method: 'cash', amount: groupA.total },
+  ]);
+  assert(paidA.billClosed === false, 'bill tetap open setelah group pertama');
+  const paidB = await payBillSplit(cashier.id, groupB.id, [
+    { method: 'qris', amount: groupB.total },
+  ]);
+  assert(paidB.billClosed === true, 'bill lunas setelah semua group dibayar');
+
+  /* ---------------------------- Gateway mock ----------------------------- */
+  const [gatewayTable] = await db
+    .select()
+    .from(schema.venueTables)
+    .where(eq(schema.venueTables.code, 'B6'))
+    .limit(1);
+  assert(gatewayTable, 'meja B6 tersedia');
+  const gatewayStart = await startBilliardSession(gatewayTable.id, cashier.id, 'Gateway Guest');
+  await stopBilliardSession(gatewayTable.id, cashier.id);
+  const intent = await createBillQrisIntent(cashier.id, gatewayStart.billId);
+  assert(intent.provider === 'mock', 'gateway mock dipakai di test');
+  const settled = await settleQrisIntent(intent.intentId);
+  assert(settled.duplicate === false, 'settlement gateway tidak duplikat');
+  const [gatewayBill] = await db
+    .select()
+    .from(schema.bills)
+    .where(eq(schema.bills.id, gatewayStart.billId))
+    .limit(1);
+  assert(gatewayBill?.status === 'paid', 'bill terbayar lewat gateway');
 
   console.log('INTEGRATION PASS', {
     shift: shift.shiftId,

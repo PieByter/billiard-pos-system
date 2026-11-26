@@ -64,6 +64,7 @@ export async function getBillPrintData(billId: string) {
     table: row.table,
     payments: paymentRows.map((entry) => ({
       id: entry.payment.id,
+      billSplitId: entry.payment.billSplitId,
       method: entry.payment.method,
       amount: entry.payment.amount,
       tendered: entry.payment.tendered,

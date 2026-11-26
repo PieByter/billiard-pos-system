@@ -368,7 +368,7 @@ Setelah keputusan di atas dipilih, scaffold repo lengkap meliputi:
 
 Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu, baru optimasi revenue, lalu kedalaman operasional, terakhir skala teknis.** Setiap item wajib mengikuti Definition of Done di §11.7.
 
-**Status implementasi:** item **#1 (refund manual)**, **#2 (staff & venue settings)**, **#3 (jadwal tarif)**, dan **#4 (reservasi/waitlist)** sudah diimplementasi di v1.1. Sisa item masih backlog.
+**Status implementasi:** item **#1 (refund manual)**, **#2 (staff & venue settings)**, **#3 (jadwal tarif)**, **#4 (reservasi/waitlist)**, **#5 (split bill per item)**, dan **#6 (QRIS dinamis)** sudah diimplementasi di v1.1 (beberapa bagian masih parsial sesuai catatan item). Sisa item masih backlog.
 
 ### 11.1 Fase 1 — Operasional harian
 
@@ -462,7 +462,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 **Implementasi v1.1:** `/staff/reservations`, `lib/services/reservations.ts`, cek overlap, deposit status (pending/paid/refunded/forfeited), check-in membuat sesi/bill, waitlist waiting → called → seated. Deposit belum masuk ledger `payments`; integrasi kas/payment menyusul.
 
 #### 5. Split bill per item/seat
-**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #1
+**Status:** selesai sebagian (v1.1; refund per split belum) · **Prioritas:** P1 · **Dependensi:** #1
 
 **Masalah:** split bill saat ini hanya per metode pembayaran. Rombongan tidak bisa membagi per item atau per pemain.
 
@@ -479,12 +479,14 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Pembayaran parsial tidak menutup bill sampai lunas.
 - Split group dan pembayaran tercatat di audit.
 
-**Dampak skema:** `bill_split_groups`, `payment_allocations` (payment → order item/session/group).
+**Dampak skema:** `bill_splits`, `bill_split_items`, `payments.bill_split_id` (payment → group), alokasi item/sesi per group.
+
+**Implementasi v1.1:** `/staff/cashier/split/[billId]`, `bill_splits`, `bill_split_items`, `payments.bill_split_id`, alokasi proporsional PB1/service, pembayaran parsial per group, struk `/print/split/[splitId]`. Refund langsung per split belum; refund bill tetap di Admin → Refund.
 
 ### 11.2 Fase 2 — Revenue & guest experience
 
 #### 6. Payment gateway QRIS
-**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #1, kredensial provider
+**Status:** selesai sebagian (v1.1; refund API gateway belum di UI) · **Prioritas:** P1 · **Dependensi:** #1, kredensial provider
 
 **Scope:**
 - Adapter provider (Midtrans/Xendit) dengan interface `createCharge`, `getStatus`, `refund`.
@@ -498,6 +500,8 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Webhook dobel tidak membuat payment ganda.
 - Nominal/expiry/refund tervalidasi.
 - Reconciliation report mencocokkan payment gateway vs bill.
+
+**Implementasi v1.1:** `/api/webhooks/payment/gateway`, `payment_intents` + `lib/payments/gateway.ts` (mock/Midtrans/Xendit), dialog QRIS dinamis di kasir, polling status, webhook auto-settlement, env `PAYMENT_GATEWAY`. QRIS dinamis saat ini untuk bill non-split; group split masih manual. Refund gateway adapter sudah ada tetapi belum diaktifkan di UI.
 
 #### 7. Membership & loyalty
 **Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #2
@@ -761,8 +765,8 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 ### 11.6 Urutan sprint yang disarankan
 1. **Sprint 1 (selesai v1.1):** #1 Refund manual, #2 Staff & settings.
 2. **Sprint 2 (sebagian selesai v1.1):** #3 Tarif otomatis, #4 Reservation & waitlist; #20 Denda overtime/no-show masih pending.
-3. **Sprint 3:** #5 Split per item/seat, #13 Kas & shift lanjutan.
-4. **Sprint 4:** #6 Payment gateway, #9 E-receipt.
+3. **Sprint 3 (sebagian selesai v1.1):** #5 Split per item/seat; #13 Kas & shift lanjutan masih pending.
+4. **Sprint 4 (sebagian selesai v1.1):** #6 Payment gateway QRIS (refund gateway belum); #9 E-receipt masih pending.
 5. **Sprint 5:** #7 Membership, #8 Promo engine.
 6. **Sprint 6:** #11 Inventory & BOM, #12 Maintenance, #20 Denda kerusakan/kehilangan.
 7. **Sprint 7:** #15 Go-live, #16 CI/CD, #19 Hardening (bisa paralel lebih awal).

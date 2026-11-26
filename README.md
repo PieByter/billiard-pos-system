@@ -21,6 +21,7 @@ worker).
 | `/login` | Login staff, quick-login demo, branding venue |
 | `/staff/cashier` | Matrix 8 meja billiard + 12 meja cafe, timer live, pause/resume, stop & pay, pindah meja, order F&B, split payment, QR per meja, approval self-order, panggilan waiter |
 | `/staff/reservations` | Reservasi meja, cek konflik, deposit, check-in ke sesi/bill, waitlist walk-in (panggil/duduk/no-show) |
+| `/staff/cashier/split/[billId]` | Split bill per item/sesi, alokasi group, pembayaran parsial per group, struk split |
 | `/staff/kitchen` | KDS 3 lane (Baru / Dimasak / Siap Antar), filter station, checklist item, overdue >12m, buzzer, fullscreen, print tiket |
 | `/staff/admin` | KPI shift, balancing kas + hitung per pecahan, komposisi pembayaran, master tarif, audit log, riwayat shift, X/Z report |
 | `/staff/admin/menu` | CRUD menu, harga, stok, station, best seller, availability |
@@ -30,7 +31,7 @@ worker).
 | `/staff/admin/refunds` | Refund pembayaran bill lunas (partial/full), kategori refund, restock stok, riwayat refund |
 | `/staff/admin/staff` | CRUD staff, role, aktif/nonaktif, reset akses, provisioning Supabase Auth |
 | `/staff/admin/settings` | Pengaturan venue, PB1, service charge, footer struk, warning menit |
-| `/print/*` | Struk bill 80mm, tiket kitchen 80mm, X/Z report shift, kartu QR A4 |
+| `/print/*` | Struk bill 80mm, tiket kitchen 80mm, X/Z report shift, kartu QR A4, struk split group |
 
 ### Layar tamu
 | Route | Fungsi |
@@ -49,6 +50,8 @@ worker).
 - **Snapshot venue settings**: perubahan PB1/service hanya berlaku untuk bill baru.
 - **Tarif otomatis per jadwal**: `table_rate_schedules` memilih rate berdasarkan hari/jam Asia/Jakarta dan prioritas; tarif di-snapshot saat start.
 - **Reservasi & waitlist**: cek overlap, deposit tercatat, check-in membuat bill/sesi; waitlist walk-in terpisah.
+- **Split bill per item/sesi**: group pembayaran parsial; bill baru ditutup setelah semua group lunas.
+- **QRIS dinamis**: create-charge via gateway (mock/Midtrans/Xendit), QR display, polling status, webhook auto-settlement.
 - **Audit log append-only** untuk start/stop sesi, pause, order, void, diskon, refund, staff, settings, shift, rotasi QR, dll.
 - **Role guard server-side**: owner / cashier / kitchen. Admin hanya owner; staff nonaktif langsung ditolak.
 - **PWA**: installable, cache menu yang pernah dibuka, halaman `/offline`, print browser 80mm.
@@ -214,6 +217,24 @@ Sifat:
 - menutup bill + set meja cleaning jika lunas,
 - audit `bill.paid_webhook`.
 
+### 3.8 QRIS dinamis (opsional)
+Endpoint webhook gateway: `POST /api/webhooks/payment/gateway`
+
+Env:
+```bash
+PAYMENT_GATEWAY=mock|midtrans|xendit
+MIDTRANS_SERVER_KEY=...
+MIDTRANS_IS_PRODUCTION=false
+XENDIT_SECRET_KEY=...
+XENDIT_CALLBACK_TOKEN=...
+```
+- **mock**: hanya untuk dev/demo; QR palsu + tombol “Simulasikan pembayaran”.
+- **midtrans**: `POST /v2/charge` (`payment_type=qris`), signature notification SHA512.
+- **xendit**: `POST /qr_codes`, callback token header.
+- Bill yang sudah punya payment intent pending akan membuat intent lama `cancelled` saat QR baru dibuat.
+- Settlement webhook menutup bill otomatis + meja cleaning.
+- Refund gateway belum otomatis; refund manual tetap lewat Admin → Refund.
+
 Contoh generate signature:
 ```js
 const { createHmac } = require('node:crypto');
@@ -235,6 +256,7 @@ const signature = createHmac('sha256', process.env.PAYMENT_WEBHOOK_SECRET)
 - Diskon (owner) mengurangi dasar PB1 & service. PB1 default 10%, service 5% (bisa diubah di row
   `bills`/seed).
 - Split bill = beberapa row `payments` dengan metode berbeda, total harus sama dengan total bill.
+- Split per item/sesi: semua item/sesi harus dialokasikan tepat sekali; bill tetap open sampai semua group lunas.
 - Bill hanya bisa dibayar jika tidak ada sesi aktif dan tidak ada self-order pending.
 
 ### Self-order
@@ -296,15 +318,15 @@ public/                         # manifest, sw.js, icons
 | Cetak | `window.print()` 80mm (Chrome/Edge). Tidak ada ESC/POS langsung karena Vercel tidak bisa menjangkau printer LAN. |
 | QRIS | Manual-confirm di kasir + webhook gateway opsional. Tidak memaksa bayar di muka. |
 | Tarif peak/off-peak | Model tarif per meja. Slot jam dapat dibuat sebagai rate terpisah dan di-assign ke meja; belum ada auto-switch tarif di tengah sesi (snapshot rate). |
-| Split bill | Split berdasarkan metode bayar, bukan per item/seat. |
+| Split bill | Per metode bayar dan per item/sesi (group pembayaran parsial). |
 | Stock | Opsional per menu (`stock = null` = tak dilacak). |
 
 ### Belum termasuk v1 (roadmap)
-Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (20 item; refund manual, staff/settings, jadwal tarif, dan reservasi sudah ada). Ringkasannya:
+Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (20 item; refund manual, staff/settings, jadwal tarif, reservasi, split bill, dan QRIS dinamis sudah ada). Ringkasannya:
 
 Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi eksternal, bukan karena terlewat:
 
-- **QRIS create-charge / refund otomatis.** Refund manual sudah tersedia di Admin → Refund; pembuatan QR dinamis dan refund otomatis butuh payment gateway (Midtrans/Xendit).
+- **QRIS refund otomatis.** Create-charge + auto-settlement sudah ada; refund manual tersedia di Admin → Refund. Pemanggilan refund API gateway belum diaktifkan di UI.
 - **Denda & penalty engine.** Overtime sesi, no-show reservasi, kerusakan/kehilangan alat, dan denda manual belum ada aturan, approval, atau pencatatan di bill.
 - **Offline write queue.** PWA menyimpan menu read-only; order/pembayaran tetap butuh jaringan (sesuai PRD v1).
 - **ESC/POS langsung / print agent.** Cetak memakai `window.print()` 80mm; printer LAN perlu driver di komputer kasir.
@@ -358,6 +380,10 @@ Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi e
 - [ ] Jadwal overlap → prioritas tertinggi menang; nonaktifkan jadwal → fallback ke tarif default.
 - [ ] Reservasi: buat booking → konflik jadwal ditolak; check-in membuat bill/sesi; no-show/cancel tercatat.
 - [ ] Waitlist: tambah → panggil → duduk; status dan waktu tercatat.
+- [ ] Split: alokasikan sesi/item ke 2+ group → bayar group 1 → bill tetap open → bayar group terakhir → bill lunas.
+- [ ] Split: item tidak bisa dialokasikan dua kali; total group = total bill; struk per group.
+- [ ] QRIS dinamis (mock): buat QR → simulasi bayar → bill lunas + meja cleaning.
+- [ ] QRIS gateway Midtrans/Xendit: webhook signature/callback token valid; nominal salah ditolak; duplikat idempoten.
 - [ ] Tutup shift dengan bill open (harus ditolak); setelah semua bill lunas → Z-report.
 - [ ] Webhook payment: signature salah 401, dobel 200 idempoten, nominal salah 400.
 - [ ] QR: copy link, buka incognito, rotate token → link lama 404.

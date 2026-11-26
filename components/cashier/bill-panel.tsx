@@ -22,6 +22,8 @@ type BillPanelProps = {
   onStopPay: () => void;
   onAddOrder: () => void;
   onPay: (method?: PayMethod, split?: boolean) => void;
+  onSplit: () => void;
+  onQrisGateway: () => void;
   onMove: () => void;
   onApprove: (orderId: string) => void;
   onReject: (orderId: string) => void;
@@ -477,6 +479,31 @@ function ActiveBillPanel({ table, ...props }: BillPanelProps & { table: TableVie
               Slip
             </Button>
           </div>
+          <Button
+            variant="secondary"
+            size="md"
+            className="w-full"
+            onClick={props.onSplit}
+            disabled={props.busy || pendingOrders.length > 0 || Boolean(session)}
+            title={
+              session
+                ? 'Stop sesi billiard sebelum split'
+                : 'Bagi item/sesi ke beberapa group pembayaran'
+            }
+          >
+            <Icon name="call_split" className="text-[17px] text-secondary" />
+            Split per item / seat
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full"
+            onClick={props.onQrisGateway}
+            disabled={props.busy || pendingOrders.length > 0 || Boolean(session)}
+          >
+            <Icon name="qr_code_scanner" className="text-[16px] text-secondary" />
+            QRIS dinamis (gateway)
+          </Button>
         </div>
       )}
 

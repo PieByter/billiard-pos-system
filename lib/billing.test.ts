@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  allocateSplitTotals,
   billableElapsedSeconds,
   computeBillTotals,
   computeSessionAmount,
@@ -99,5 +100,33 @@ describe('computeBillTotals', () => {
     });
     expect(totals.discountAmount).toBe(50_000);
     expect(totals.total).toBe(0);
+  });
+});
+
+describe('allocateSplitTotals', () => {
+  it('membagi total bill ke group dan jumlahnya tetap sama', () => {
+    const groups = allocateSplitTotals([100_000, 25_000], {
+      subtotal: 125_000,
+      discountAmount: 5_000,
+      taxRateBps: 1000,
+      serviceRateBps: 500,
+    });
+    expect(groups).toHaveLength(2);
+    expect(groups.reduce((sum, group) => sum + group.subtotal, 0)).toBe(125_000);
+    expect(groups.reduce((sum, group) => sum + group.discountAmount, 0)).toBe(5_000);
+    expect(groups.reduce((sum, group) => sum + group.taxAmount, 0)).toBe(12_000);
+    expect(groups.reduce((sum, group) => sum + group.serviceAmount, 0)).toBe(6_000);
+    expect(groups.reduce((sum, group) => sum + group.total, 0)).toBe(138_000);
+  });
+
+  it('tidak menghasilkan total negatif saat diskon penuh', () => {
+    const groups = allocateSplitTotals([50_000, 50_000], {
+      subtotal: 100_000,
+      discountAmount: 100_000,
+      taxRateBps: 1000,
+      serviceRateBps: 500,
+    });
+    expect(groups.every((group) => group.total >= 0)).toBe(true);
+    expect(groups.reduce((sum, group) => sum + group.total, 0)).toBe(0);
   });
 });

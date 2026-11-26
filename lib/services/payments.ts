@@ -11,6 +11,7 @@ import { AppError } from '@/lib/errors';
 import type { PaymentInput } from '@/lib/types';
 import { recalcBillTotals, restoreOrderStock } from './bill';
 import { audit } from './audit';
+import { hasBillSplits } from './splits';
 
 const VALID_METHODS = new Set(['cash', 'qris', 'transfer', 'edc']);
 
@@ -43,6 +44,9 @@ export async function payBill(
     const { bill, total } = await recalcBillTotals(tx, billId, now);
     if (bill.status !== 'open') {
       throw new AppError('BILL_NOT_OPEN', 'Bill ini sudah ditutup.');
+    }
+    if (await hasBillSplits(tx, billId)) {
+      throw new AppError('USE_SPLIT_PAYMENT', 'Bill ini memakai split group. Bayar dari halaman split.');
     }
     if (total <= 0) {
       throw new AppError('EMPTY_BILL', 'Bill tidak punya item untuk dibayar.');
@@ -169,6 +173,9 @@ export async function applyBillDiscount(
     const now = await dbNow(tx);
     const { bill, total } = await recalcBillTotals(tx, billId, now);
     if (bill.status !== 'open') throw new AppError('BILL_NOT_OPEN', 'Bill sudah ditutup.');
+    if (await hasBillSplits(tx, billId)) {
+      throw new AppError('BILL_SPLIT_LOCKED', 'Diskon tidak bisa diubah setelah split dibuat.');
+    }
     if (discount > bill.subtotal) {
       throw new AppError('DISCOUNT_TOO_LARGE', 'Diskon melebihi subtotal bill.');
     }
@@ -205,6 +212,9 @@ export async function voidBill(billId: string, staffId: string, reason: string) 
     const [bill] = await tx.select().from(bills).where(eq(bills.id, billId)).limit(1);
     if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill tidak ditemukan.');
     if (bill.status !== 'open') throw new AppError('BILL_NOT_OPEN', 'Bill sudah ditutup.');
+    if (await hasBillSplits(tx, billId)) {
+      throw new AppError('BILL_SPLIT_LOCKED', 'Void tidak bisa dilakukan setelah split dibuat.');
+    }
 
     const [paymentCount] = await tx
       .select({ total: count() })

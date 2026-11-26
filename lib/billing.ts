@@ -91,6 +91,68 @@ export function computeBillTotals(input: BillTotalsInput): BillTotals {
   };
 }
 
+/** Alokasikan total bill ke beberapa split group secara proporsional. */
+export function allocateSplitTotals(
+  groupSubtotals: number[],
+  input: BillTotalsInput,
+): Array<{
+  subtotal: number;
+  discountAmount: number;
+  taxAmount: number;
+  serviceAmount: number;
+  total: number;
+}> {
+  const subtotal = Math.max(0, Math.round(input.subtotal));
+  const totals = computeBillTotals({ ...input, subtotal });
+  if (groupSubtotals.length === 0) return [];
+
+  const result: Array<{
+    subtotal: number;
+    discountAmount: number;
+    taxAmount: number;
+    serviceAmount: number;
+    total: number;
+  }> = [];
+  let allocatedSubtotal = 0;
+  let allocatedDiscount = 0;
+  let allocatedTax = 0;
+  let allocatedService = 0;
+
+  groupSubtotals.forEach((rawSubtotal, index) => {
+    const isLast = index === groupSubtotals.length - 1;
+    const groupSubtotal = isLast
+      ? Math.max(0, subtotal - allocatedSubtotal)
+      : Math.max(0, Math.round(rawSubtotal));
+    const groupDiscount = isLast
+      ? Math.max(0, totals.discountAmount - allocatedDiscount)
+      : subtotal > 0
+        ? Math.round((totals.discountAmount * groupSubtotal) / subtotal)
+        : 0;
+    const taxableBase = Math.max(0, groupSubtotal - groupDiscount);
+    const groupTax = isLast
+      ? Math.max(0, totals.taxAmount - allocatedTax)
+      : Math.round((taxableBase * Math.max(0, input.taxRateBps)) / 10_000);
+    const groupService = isLast
+      ? Math.max(0, totals.serviceAmount - allocatedService)
+      : Math.round((taxableBase * Math.max(0, input.serviceRateBps)) / 10_000);
+
+    result.push({
+      subtotal: groupSubtotal,
+      discountAmount: groupDiscount,
+      taxAmount: groupTax,
+      serviceAmount: groupService,
+      total: taxableBase + groupTax + groupService,
+    });
+
+    allocatedSubtotal += groupSubtotal;
+    allocatedDiscount += groupDiscount;
+    allocatedTax += groupTax;
+    allocatedService += groupService;
+  });
+
+  return result;
+}
+
 /** Format durasi HH:MM:SS (bisa lebih dari 24 jam). */
 export function formatDuration(totalSeconds: number): string {
   const sec = Math.max(0, Math.floor(totalSeconds));

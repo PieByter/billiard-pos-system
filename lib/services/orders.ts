@@ -15,6 +15,7 @@ import { orderNumber } from '@/lib/ids';
 import type { CartLine } from '@/lib/types';
 import { ensureOpenBill, recalcBillTotals, restoreOrderStock } from './bill';
 import { audit } from './audit';
+import { hasBillSplits } from './splits';
 
 export type OrderActor =
   | { type: 'customer' }
@@ -170,6 +171,9 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         table.id,
         input.actor.type === 'staff' ? input.actor.id : null,
       );
+      if (await hasBillSplits(tx, bill.id)) {
+        throw new AppError('BILL_SPLIT_LOCKED', 'Bill sudah di-split. Selesaikan pembayaran split.');
+      }
 
       const isCustomer = input.actor.type === 'customer';
       const [order] = await tx

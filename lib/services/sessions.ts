@@ -10,6 +10,7 @@ import { AppError, isUniqueViolation } from '@/lib/errors';
 import { ensureOpenBill, recalcBillTotals } from './bill';
 import { audit } from './audit';
 import { resolveRateForTable } from './rate-schedules';
+import { hasBillSplits } from './splits';
 
 export async function startBilliardSession(
   tableId: string,
@@ -44,6 +45,9 @@ export async function startBilliardSession(
       }
 
       const bill = await ensureOpenBill(tx, tableId, staffId);
+      if (await hasBillSplits(tx, bill.id)) {
+        throw new AppError('BILL_SPLIT_LOCKED', 'Bill sudah di-split. Selesaikan pembayaran split.');
+      }
       const cleanGuest = guestName?.trim().slice(0, 80) || null;
       if (cleanGuest && !bill.guestName) {
         await tx.update(bills).set({ guestName: cleanGuest }).where(eq(bills.id, bill.id));

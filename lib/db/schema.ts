@@ -57,6 +57,15 @@ export const waitlistStatusEnum = pgEnum('waitlist_status', [
   'cancelled',
   'no_show',
 ]);
+export const billSplitStatusEnum = pgEnum('bill_split_status', ['open', 'paid', 'void']);
+export const billSplitItemTypeEnum = pgEnum('bill_split_item_type', ['order_item', 'session']);
+export const paymentIntentStatusEnum = pgEnum('payment_intent_status', [
+  'pending',
+  'paid',
+  'expired',
+  'failed',
+  'cancelled',
+]);
 
 /* -------------------------------------------------------------------------- */
 /*                                  Profiles                                  */
@@ -306,6 +315,53 @@ export const orderItems = pgTable(
   (t) => [index('order_items_order_idx').on(t.orderId)],
 ).enableRLS();
 
+export const billSplits = pgTable(
+  'bill_splits',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    billId: uuid()
+      .notNull()
+      .references(() => bills.id, { onDelete: 'cascade' }),
+    label: text().notNull(),
+    status: billSplitStatusEnum().notNull().default('open'),
+    subtotal: integer().notNull().default(0),
+    discountAmount: integer().notNull().default(0),
+    taxAmount: integer().notNull().default(0),
+    serviceAmount: integer().notNull().default(0),
+    total: integer().notNull().default(0),
+    createdBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    paidAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [index('bill_splits_bill_idx').on(t.billId, t.status)],
+).enableRLS();
+
+export const billSplitItems = pgTable(
+  'bill_split_items',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    splitId: uuid()
+      .notNull()
+      .references(() => billSplits.id, { onDelete: 'cascade' }),
+    itemType: billSplitItemTypeEnum().notNull(),
+    orderItemId: uuid().references(() => orderItems.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
+    sessionId: uuid().references(() => billiardSessions.id, {
+      onDelete: 'cascade',
+      onUpdate: 'cascade',
+    }),
+    amount: integer().notNull().default(0),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('bill_split_items_split_idx').on(t.splitId),
+    uniqueIndex('bill_split_items_order_unique').on(t.orderItemId),
+    uniqueIndex('bill_split_items_session_unique').on(t.sessionId),
+  ],
+).enableRLS();
+
 /* -------------------------------------------------------------------------- */
 /*                                 Payments                                   */
 /* -------------------------------------------------------------------------- */
@@ -317,6 +373,7 @@ export const payments = pgTable(
     billId: uuid()
       .notNull()
       .references(() => bills.id, { onDelete: 'cascade' }),
+    billSplitId: uuid().references(() => billSplits.id, { onDelete: 'set null' }),
     method: payMethodEnum().notNull(),
     amount: integer().notNull(),
     tendered: integer(),
@@ -411,6 +468,33 @@ export const waitlistEntries = pgTable(
   (t) => [index('waitlist_status_idx').on(t.status, t.createdAt)],
 ).enableRLS();
 
+export const paymentIntents = pgTable(
+  'payment_intents',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    billId: uuid()
+      .notNull()
+      .references(() => bills.id, { onDelete: 'cascade' }),
+    provider: text().notNull(),
+    providerOrderId: text().notNull().unique(),
+    providerRef: text(),
+    amount: integer().notNull(),
+    status: paymentIntentStatusEnum().notNull().default('pending'),
+    qrString: text(),
+    qrUrl: text(),
+    expiresAt: timestamp({ withTimezone: true }),
+    paidAt: timestamp({ withTimezone: true }),
+    rawPayload: jsonb().$type<Record<string, unknown>>(),
+    createdBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('payment_intents_bill_idx').on(t.billId, t.status),
+    index('payment_intents_status_idx').on(t.status, t.createdAt),
+  ],
+).enableRLS();
+
 /* -------------------------------------------------------------------------- */
 /*                                   Shift                                    */
 /* -------------------------------------------------------------------------- */
@@ -493,6 +577,9 @@ export type VenueSettings = typeof venueSettings.$inferSelect;
 export type TableRateSchedule = typeof tableRateSchedules.$inferSelect;
 export type Reservation = typeof reservations.$inferSelect;
 export type WaitlistEntry = typeof waitlistEntries.$inferSelect;
+export type BillSplit = typeof billSplits.$inferSelect;
+export type BillSplitItem = typeof billSplitItems.$inferSelect;
+export type PaymentIntent = typeof paymentIntents.$inferSelect;
 export type Shift = typeof shifts.$inferSelect;
 export type AuditEntry = typeof auditLog.$inferSelect;
 export type ServiceRequest = typeof serviceRequests.$inferSelect;

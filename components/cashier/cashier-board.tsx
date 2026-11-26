@@ -26,6 +26,7 @@ import {
   StartSessionDialog,
 } from './session-dialogs';
 import { DiscountDialog, PaymentDialog, VoidBillDialog } from './payment-dialogs';
+import { QrisGatewayDialog } from './qris-gateway-dialog';
 import { TableCard } from './table-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -76,6 +77,7 @@ export function CashierBoard({
   const [orderId, setOrderId] = useState<string | null>(null);
   const [moveId, setMoveId] = useState<string | null>(null);
   const [qrId, setQrId] = useState<string | null>(null);
+  const [qrisGatewayId, setQrisGatewayId] = useState<string | null>(null);
   const [discountId, setDiscountId] = useState<string | null>(null);
   const [voidId, setVoidId] = useState<string | null>(null);
   const [payState, setPayState] = useState<PayState | null>(null);
@@ -111,6 +113,7 @@ export function CashierBoard({
   const orderTable = data.tables.find((table) => table.id === orderId) ?? null;
   const moveSource = data.tables.find((table) => table.id === moveId) ?? null;
   const qrTable = data.tables.find((table) => table.id === qrId) ?? null;
+  const qrisGatewayTable = data.tables.find((table) => table.id === qrisGatewayId) ?? null;
   const discountTable = data.tables.find((table) => table.id === discountId) ?? null;
   const voidTable = data.tables.find((table) => table.id === voidId) ?? null;
   const payTable = payState ? data.tables.find((table) => table.id === payState.tableId) ?? null : null;
@@ -298,6 +301,14 @@ export function CashierBoard({
     onAddOrder: () => {
       setMobileBillOpen(false);
       setOrderId(selected?.id ?? null);
+    },
+    onSplit: () => {
+      setMobileBillOpen(false);
+      if (selected?.bill) router.push(`/staff/cashier/split/${selected.bill.id}`);
+    },
+    onQrisGateway: () => {
+      setMobileBillOpen(false);
+      setQrisGatewayId(selected?.id ?? null);
     },
     onPay: (method?: PayMethod, split?: boolean) => {
       setMobileBillOpen(false);
@@ -612,6 +623,11 @@ export function CashierBoard({
         onClose={() => setMoveId(null)}
       />
       <QrDialog open={Boolean(qrTable)} table={qrTable} onClose={() => setQrId(null)} />
+      <QrisGatewayDialog
+        open={Boolean(qrisGatewayTable)}
+        table={qrisGatewayTable}
+        onClose={() => setQrisGatewayId(null)}
+      />
       <QuickOpenDialog
         open={quickOpen}
         tables={availableTables}

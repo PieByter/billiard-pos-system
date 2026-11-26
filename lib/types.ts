@@ -338,6 +338,48 @@ export type CustomerOrderView = {
   subtotal: number;
 };
 
+export type BillSplitItemView = {
+  id: string;
+  type: 'order_item' | 'session';
+  refId: string;
+  name: string;
+  qty: number;
+  amount: number;
+};
+
+export type BillSplitView = {
+  id: string;
+  label: string;
+  status: 'open' | 'paid' | 'void';
+  subtotal: number;
+  discountAmount: number;
+  taxAmount: number;
+  serviceAmount: number;
+  total: number;
+  paidAmount: number;
+  paidAt: string | null;
+  items: BillSplitItemView[];
+};
+
+export type SplitBillData = {
+  bill: BillView;
+  table: {
+    code: string;
+    zone: string;
+    kind: TableKind;
+  };
+  serverNow: string;
+  splits: BillSplitView[];
+  payments: Array<{
+    id: string;
+    billSplitId: string | null;
+    method: PayMethod;
+    amount: number;
+    staffName: string | null;
+    createdAt: string;
+  }>;
+};
+
 export type ReservationView = {
   id: string;
   code: string;
