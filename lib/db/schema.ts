@@ -69,6 +69,19 @@ export const paymentIntentStatusEnum = pgEnum('payment_intent_status', [
 export const promotionTypeEnum = pgEnum('promotion_type', ['percent', 'fixed']);
 export const promotionScopeEnum = pgEnum('promotion_scope', ['all', 'billiard', 'fnb']);
 export const loyaltyTypeEnum = pgEnum('loyalty_type', ['earn', 'redeem', 'adjust']);
+export const notificationChannelEnum = pgEnum('notification_channel', ['email', 'whatsapp', 'log']);
+export const notificationTypeEnum = pgEnum('notification_type', [
+  'receipt',
+  'order_ready',
+  'reservation',
+  'test',
+]);
+export const notificationStatusEnum = pgEnum('notification_status', [
+  'pending',
+  'sent',
+  'failed',
+  'skipped',
+]);
 
 /* -------------------------------------------------------------------------- */
 /*                                  Profiles                                  */
@@ -584,6 +597,37 @@ export const loyaltyLedger = pgTable(
   ],
 ).enableRLS();
 
+export const notificationOutbox = pgTable(
+  'notification_outbox',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    channel: notificationChannelEnum().notNull(),
+    type: notificationTypeEnum().notNull(),
+    recipient: text().notNull(),
+    subject: text(),
+    body: text().notNull(),
+    status: notificationStatusEnum().notNull().default('pending'),
+    attempts: integer().notNull().default(0),
+    lastError: text(),
+    billId: uuid().references(() => bills.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    orderId: uuid().references(() => orders.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    memberId: uuid().references(() => members.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    metadata: jsonb().$type<Record<string, unknown>>(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    sentAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    index('notification_outbox_status_idx').on(t.status, t.createdAt),
+    uniqueIndex('notification_receipt_bill_unique')
+      .on(t.billId)
+      .where(sql`${t.type} = 'receipt'`),
+    uniqueIndex('notification_order_ready_unique')
+      .on(t.orderId)
+      .where(sql`${t.type} = 'order_ready'`),
+  ],
+).enableRLS();
+
 /* -------------------------------------------------------------------------- */
 /*                                   Shift                                    */
 /* -------------------------------------------------------------------------- */
@@ -673,6 +717,7 @@ export type MemberTier = typeof memberTiers.$inferSelect;
 export type Member = typeof members.$inferSelect;
 export type Promotion = typeof promotions.$inferSelect;
 export type LoyaltyLedgerEntry = typeof loyaltyLedger.$inferSelect;
+export type NotificationOutboxEntry = typeof notificationOutbox.$inferSelect;
 export type Shift = typeof shifts.$inferSelect;
 export type AuditEntry = typeof auditLog.$inferSelect;
 export type ServiceRequest = typeof serviceRequests.$inferSelect;

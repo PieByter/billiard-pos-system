@@ -14,6 +14,7 @@ import { audit } from './audit';
 import { hasBillSplits } from './splits';
 import { awardMembershipForBill } from './membership';
 import { consumePromotionForBill } from './promotions';
+import { enqueueReceiptForBill } from './notifications';
 
 const VALID_METHODS = new Set(['cash', 'qris', 'transfer', 'edc']);
 
@@ -126,6 +127,7 @@ export async function payBill(
       .where(eq(venueTables.id, bill.tableId));
     await awardMembershipForBill(tx, billId, staffId);
     await consumePromotionForBill(tx, billId, staffId);
+    await enqueueReceiptForBill(tx, billId);
 
     const cashTendered = paymentRows.reduce(
       (sum, payment) =>

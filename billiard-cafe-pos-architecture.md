@@ -368,7 +368,7 @@ Setelah keputusan di atas dipilih, scaffold repo lengkap meliputi:
 
 Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu, baru optimasi revenue, lalu kedalaman operasional, terakhir skala teknis.** Setiap item wajib mengikuti Definition of Done di §11.7.
 
-**Status implementasi:** item **#1 (refund manual)**, **#2 (staff & venue settings)**, **#3 (jadwal tarif)**, **#4 (reservasi/waitlist)**, **#5 (split bill per item)**, **#6 (QRIS dinamis)**, **#7 (member & loyalty)**, dan **#8 (promo engine)** sudah diimplementasi di v1.1 (beberapa bagian masih parsial sesuai catatan item). Sisa item masih backlog.
+**Status implementasi:** item **#1–#10** sudah diimplementasi sebagian di v1.1 (detail parsial ada di tiap item). Sisa item (#11 ke atas) masih backlog.
 
 ### 11.1 Fase 1 — Operasional harian
 
@@ -543,7 +543,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 **Implementasi v1.1:** `/staff/admin/promotions`, PromoDialog di kasir, kode persen/nominal, min spend, max diskon, kuota, masa berlaku, cakupan all/billiard/fnb, member-only. Kuota bertambah saat bill lunas. Bundle/stacking/happy hour otomatis belum.
 
 #### 9. E-receipt & notifikasi
-**Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #6
+**Status:** selesai sebagian (v1.1; template/opt-out granular belum) · **Prioritas:** P2 · **Dependensi:** #6
 
 **Scope:**
 - Outbox notifikasi (WhatsApp Cloud API/email) dengan retry.
@@ -559,8 +559,10 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 
 **Dampak skema:** `notification_outbox`, `member_contacts`/consent.
 
+**Implementasi v1.1:** `/staff/admin/notifications`, `notification_outbox`, provider log/Resend/WhatsApp Cloud API, retry manual, consent member dihormati. E-receipt/order-ready masuk antrean saat bill lunas/order ready. Template kustom, opt-out per channel, dan pengiriman otomatis via cron belum.
+
 #### 10. Customer experience lanjutan
-**Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #9
+**Status:** selesai sebagian (v1.1; push & feedback belum) · **Prioritas:** P2 · **Dependensi:** #9
 
 **Scope:**
 - Favorit/reorder, estimasi waktu saji, tracker timeline lebih kaya.
@@ -572,6 +574,8 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Tamu bisa reorder tanpa login.
 - Push hanya dikirim dengan izin.
 - Tracking tetap bekerja saat offline read-only.
+
+**Implementasi v1.1:** favorit menu (localStorage), filter favorit, reorder dari tracker, ETA status, timeline tracker. Web push dan rating/feedback belum.
 
 ### 11.3 Fase 3 — Kedalaman operasional
 
@@ -770,8 +774,8 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 1. **Sprint 1 (selesai v1.1):** #1 Refund manual, #2 Staff & settings.
 2. **Sprint 2 (sebagian selesai v1.1):** #3 Tarif otomatis, #4 Reservation & waitlist; #20 Denda overtime/no-show masih pending.
 3. **Sprint 3 (sebagian selesai v1.1):** #5 Split per item/seat; #13 Kas & shift lanjutan masih pending.
-4. **Sprint 4 (sebagian selesai v1.1):** #6 Payment gateway QRIS (refund gateway belum); #9 E-receipt masih pending.
-5. **Sprint 5 (sebagian selesai v1.1):** #7 Membership, #8 Promo engine; redeem/voucher/bundle masih pending.
+4. **Sprint 4 (sebagian selesai v1.1):** #6 Payment gateway QRIS (refund gateway belum); #9 E-receipt/outbox sudah ada.
+5. **Sprint 5 (sebagian selesai v1.1):** #7 Membership, #8 Promo engine, #10 Customer experience; redeem/voucher/bundle/push/feedback masih pending.
 6. **Sprint 6:** #11 Inventory & BOM, #12 Maintenance, #20 Denda kerusakan/kehilangan.
 7. **Sprint 7:** #15 Go-live, #16 CI/CD, #19 Hardening (bisa paralel lebih awal).
 8. **Sprint 8:** #14 Multi-outlet, #17 Offline queue, #18 ESC/POS.

@@ -14,6 +14,7 @@ import { recalcBillTotals } from '@/lib/services/bill';
 import { audit } from '@/lib/services/audit';
 import { awardMembershipForBill } from '@/lib/services/membership';
 import { consumePromotionForBill } from '@/lib/services/promotions';
+import { enqueueReceiptForBill } from '@/lib/services/notifications';
 import { AppError, isUniqueViolation } from '@/lib/errors';
 
 export const dynamic = 'force-dynamic';
@@ -149,6 +150,7 @@ export async function POST(request: Request) {
         .where(eq(venueTables.id, bill.tableId));
       await awardMembershipForBill(tx, bill.id, null);
       await consumePromotionForBill(tx, bill.id, null);
+      await enqueueReceiptForBill(tx, bill.id);
 
       await audit(tx, {
         staffId: null,

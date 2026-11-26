@@ -16,6 +16,7 @@ import type { CartLine } from '@/lib/types';
 import { ensureOpenBill, recalcBillTotals, restoreOrderStock } from './bill';
 import { audit } from './audit';
 import { hasBillSplits } from './splits';
+import { enqueueOrderReadyNotification } from './notifications';
 
 export type OrderActor =
   | { type: 'customer' }
@@ -373,6 +374,9 @@ async function syncOrderReadyState(
       detail: { orderNumber: order.orderNumber, stationReady: nextStatus === 'ready' },
       at: now,
     });
+    if (nextStatus === 'ready') {
+      await enqueueOrderReadyNotification(tx, orderId);
+    }
   }
   return { orderId, status: nextStatus, allDone };
 }

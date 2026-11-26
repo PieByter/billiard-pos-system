@@ -33,8 +33,10 @@ export function CustomerApp({ data }: { data: CustomerData }) {
   const [submitting, setSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [hasServiceRequest, setHasServiceRequest] = useState(data.openServiceRequest);
+  const [favorites, setFavorites] = useState<string[]>([]);
   const idempotencyRef = useRef<string | null>(null);
   const storageKey = `cuetap:cart:${data.table.qrToken}`;
+  const favoritesKey = 'cuetap:favorites';
 
   const menuById = useMemo(
     () => new Map(data.items.map((item) => [item.id, item])),
@@ -68,6 +70,30 @@ export function CustomerApp({ data }: { data: CustomerData }) {
       // storage full / private mode
     }
   }, [cart, restored, storageKey]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(favoritesKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed)) {
+          setFavorites(parsed.filter((value): value is string => typeof value === 'string'));
+        }
+      }
+    } catch {
+      // ignore corrupt storage
+    }
+  }, [favoritesKey]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(favoritesKey, JSON.stringify(favorites));
+    } catch {
+      // storage full / private mode
+    }
+  }, [favorites, favoritesKey]);
+
+  const favoriteSet = useMemo(() => new Set(favorites), [favorites]);
 
   const refreshOrders = useCallback(async () => {
     try {
@@ -121,11 +147,19 @@ export function CustomerApp({ data }: { data: CustomerData }) {
     const term = search.trim().toLowerCase();
     return data.items.filter((item) => {
       if (category === 'best' && !item.bestSeller) return false;
-      if (category !== 'all' && category !== 'best' && item.categoryId !== category) return false;
+      if (category === 'favorites' && !favoriteSet.has(item.id)) return false;
+      if (
+        category !== 'all' &&
+        category !== 'best' &&
+        category !== 'favorites' &&
+        item.categoryId !== category
+      ) {
+        return false;
+      }
       if (!term) return true;
       return `${item.name} ${item.description}`.toLowerCase().includes(term);
     });
-  }, [data.items, category, search]);
+  }, [data.items, category, search, favoriteSet]);
 
   const grouped = useMemo(() => {
     const result: Array<{
@@ -144,6 +178,36 @@ export function CustomerApp({ data }: { data: CustomerData }) {
   const bestVisible = category === 'all' && !search
     ? filtered.filter((item) => item.bestSeller)
     : [];
+
+  function toggleFavorite(itemId: string) {
+    setFavorites((current) =>
+      current.includes(itemId)
+        ? current.filter((value) => value !== itemId)
+        : [...current, itemId],
+    );
+  }
+
+  function reorder(order: CustomerOrderView) {
+    const next: CartMap = {};
+    for (const line of order.items) {
+      const menuItem = menuById.get(line.menuItemId);
+      if (!menuItem || !menuItem.available || menuItem.soldOut) continue;
+      next[menuItem.id] = {
+        qty: Math.min(line.qty, menuItem.stock ?? 50, 50),
+        note: line.note ?? '',
+      };
+    }
+    if (Object.keys(next).length === 0) {
+      toast.info('Menu dari pesanan ini sudah tidak tersedia.');
+      return;
+    }
+    setCart(next);
+    setTrackerOpen(false);
+    setCartOpen(true);
+    toast.success('Pesanan dimasukkan lagi ke keranjang', {
+      description: 'Periksa jumlah lalu kirim ulang.',
+    });
+  }
 
   function addItem(item: MenuItemView) {
     if (!data.table.allowSelfOrder || !item.available || item.soldOut) return;
@@ -437,6 +501,18 @@ export function CustomerApp({ data }: { data: CustomerData }) {
               >
                 🔥 Best seller
               </button>
+              <button
+                type="button"
+                onClick={() => setCategory('favorites')}
+                className={cn(
+                  'shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition-colors',
+                  category === 'favorites'
+                    ? 'bg-tertiary text-on-tertiary'
+                    : 'bg-surface-container-high text-on-surface-variant hover:text-on-surface',
+                )}
+              >
+                ★ Favorit {favorites.length > 0 ? `(${favorites.length})` : ''}
+              </button>
               {data.categories.map((entry) => (
                 <button
                   key={entry.id}
@@ -500,6 +576,8 @@ export function CustomerApp({ data }: { data: CustomerData }) {
                       index={index}
                       qty={cart[item.id]?.qty ?? 0}
                       allowSelfOrder={data.table.allowSelfOrder}
+                      favorite={favoriteSet.has(item.id)}
+                      onFavorite={() => toggleFavorite(item.id)}
                       onAdd={() => addItem(item)}
                       onRemove={() => setQty(item.id, (cart[item.id]?.qty ?? 0) - 1)}
                     />
@@ -516,7 +594,9 @@ export function CustomerApp({ data }: { data: CustomerData }) {
                       ? 'Hasil pencarian'
                       : category === 'best'
                         ? 'Best seller'
-                        : data.categories.find((entry) => entry.id === category)?.name}
+                        : category === 'favorites'
+                          ? 'Favoritmu'
+                          : data.categories.find((entry) => entry.id === category)?.name}
                   </h2>
                   <span className="text-[9px] uppercase tracking-wider text-outline">
                     {filtered.length} item
@@ -531,6 +611,8 @@ export function CustomerApp({ data }: { data: CustomerData }) {
                         index={index}
                         qty={cart[item.id]?.qty ?? 0}
                         allowSelfOrder={data.table.allowSelfOrder}
+                        favorite={favoriteSet.has(item.id)}
+                        onFavorite={() => toggleFavorite(item.id)}
                         onAdd={() => addItem(item)}
                         onRemove={() => setQty(item.id, (cart[item.id]?.qty ?? 0) - 1)}
                       />
@@ -545,6 +627,8 @@ export function CustomerApp({ data }: { data: CustomerData }) {
                         index={index}
                         qty={cart[item.id]?.qty ?? 0}
                         allowSelfOrder={data.table.allowSelfOrder}
+                        favorite={favoriteSet.has(item.id)}
+                        onFavorite={() => toggleFavorite(item.id)}
                         onAdd={() => addItem(item)}
                         onRemove={() => setQty(item.id, (cart[item.id]?.qty ?? 0) - 1)}
                       />
@@ -583,6 +667,8 @@ export function CustomerApp({ data }: { data: CustomerData }) {
                         index={index}
                         qty={cart[item.id]?.qty ?? 0}
                         allowSelfOrder={data.table.allowSelfOrder}
+                        favorite={favoriteSet.has(item.id)}
+                        onFavorite={() => toggleFavorite(item.id)}
                         onAdd={() => addItem(item)}
                         onRemove={() => setQty(item.id, (cart[item.id]?.qty ?? 0) - 1)}
                       />
@@ -776,6 +862,7 @@ export function CustomerApp({ data }: { data: CustomerData }) {
         orders={orders}
         bill={bill}
         hasOpenServiceRequest={hasServiceRequest}
+        onReorder={reorder}
         onCallWaiter={() => {
           setTrackerOpen(false);
           setServiceOpen(true);
@@ -797,6 +884,8 @@ function CustomerMenuCard({
   index,
   qty,
   allowSelfOrder,
+  favorite,
+  onFavorite,
   onAdd,
   onRemove,
 }: {
@@ -804,6 +893,8 @@ function CustomerMenuCard({
   index: number;
   qty: number;
   allowSelfOrder: boolean;
+  favorite: boolean;
+  onFavorite: () => void;
   onAdd: () => void;
   onRemove: () => void;
 }) {
@@ -816,6 +907,19 @@ function CustomerMenuCard({
         disabled ? 'opacity-55' : 'hover:border-outline-variant/40 hover:bg-surface-container',
       )}
     >
+      <button
+        type="button"
+        onClick={onFavorite}
+        aria-label={favorite ? 'Hapus dari favorit' : 'Tambah ke favorit'}
+        className={cn(
+          'absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full border backdrop-blur transition-colors',
+          favorite
+            ? 'border-tertiary/40 bg-tertiary/20 text-tertiary'
+            : 'border-outline-variant/30 bg-background/50 text-outline hover:text-tertiary',
+        )}
+      >
+        <Icon name={favorite ? 'star' : 'star_border'} className="text-[16px]" />
+      </button>
       <div
         className={cn(
           'relative flex h-[86px] w-[86px] shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-gradient-to-br',
@@ -841,7 +945,7 @@ function CustomerMenuCard({
 
       <div className="flex min-w-0 flex-1 flex-col justify-between">
         <div>
-          <h3 className="truncate text-body-md font-bold text-on-surface">{item.name}</h3>
+          <h3 className="truncate pr-4 text-body-md font-bold text-on-surface">{item.name}</h3>
           <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-on-surface-variant">
             {item.description}
           </p>

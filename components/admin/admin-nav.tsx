@@ -64,6 +64,13 @@ const ADMIN_TABS = [
     roles: ['owner'] as ProfileRole[],
   },
   {
+    href: '/staff/admin/notifications',
+    label: 'Notifikasi',
+    short: 'Notif',
+    icon: 'notifications',
+    roles: ['owner'] as ProfileRole[],
+  },
+  {
     href: '/staff/admin/staff',
     label: 'Staff',
     short: 'Staff',

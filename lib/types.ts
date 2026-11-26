@@ -339,8 +339,41 @@ export type CustomerOrderView = {
   readyAt: string | null;
   servedAt: string | null;
   cancelledAt: string | null;
-  items: Array<{ name: string; qty: number; note: string | null; station: StationType }>;
+  items: Array<{
+    menuItemId: string;
+    name: string;
+    qty: number;
+    note: string | null;
+    station: StationType;
+  }>;
   subtotal: number;
+};
+
+export type NotificationView = {
+  id: string;
+  channel: 'email' | 'whatsapp' | 'log';
+  type: 'receipt' | 'order_ready' | 'reservation' | 'test';
+  recipient: string;
+  subject: string | null;
+  body: string;
+  status: 'pending' | 'sent' | 'failed' | 'skipped';
+  attempts: number;
+  lastError: string | null;
+  billNumber: string | null;
+  orderNumber: string | null;
+  createdAt: string;
+  sentAt: string | null;
+};
+
+export type NotificationsData = {
+  items: NotificationView[];
+  config: {
+    preferred: 'email' | 'whatsapp' | 'log';
+    emailEnabled: boolean;
+    whatsappEnabled: boolean;
+    label: string;
+  };
+  stats: { pending: number; sent: number; failed: number };
 };
 
 export type MemberTierView = {

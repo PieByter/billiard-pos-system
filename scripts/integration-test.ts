@@ -44,6 +44,7 @@ async function main() {
   );
   const { saveMember, attachMemberToBill } = await import('../lib/services/membership');
   const { applyPromotionToBill } = await import('../lib/services/promotions');
+  const { processNotificationOutbox } = await import('../lib/services/notifications');
 
   const db = await getDb();
 
@@ -350,6 +351,8 @@ async function main() {
   const loyaltyMember = await saveMember(cashier.id, {
     name: 'Loyalty Test',
     phone: '081299998888',
+    email: 'loyalty@example.com',
+    consent: true,
   });
   await attachMemberToBill(cashier.id, gatewayStart.billId, loyaltyMember.id);
   const promotion = await applyPromotionToBill(cashier.id, gatewayStart.billId, 'WEEKEND10');
@@ -376,6 +379,14 @@ async function main() {
     .where(eq(schema.promotions.code, 'WEEKEND10'))
     .limit(1);
   assert(promoAfter?.usesCount === 1, 'kuota promo bertambah setelah lunas');
+  const [receiptNotification] = await db
+    .select()
+    .from(schema.notificationOutbox)
+    .where(eq(schema.notificationOutbox.billId, gatewayStart.billId))
+    .limit(1);
+  assert(receiptNotification, 'e-receipt masuk outbox');
+  const processed = await processNotificationOutbox();
+  assert(processed.sent >= 1, 'outbox e-receipt terkirim');
 
   console.log('INTEGRATION PASS', {
     shift: shift.shiftId,

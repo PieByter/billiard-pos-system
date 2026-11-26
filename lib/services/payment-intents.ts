@@ -15,6 +15,7 @@ import { recalcBillTotals } from './bill';
 import { hasBillSplits } from './splits';
 import { awardMembershipForBill } from './membership';
 import { consumePromotionForBill } from './promotions';
+import { enqueueReceiptForBill } from './notifications';
 import { createQrisCharge, getGatewayConfig } from '@/lib/payments/gateway';
 
 export async function createBillQrisIntent(staffId: string, billId: string) {
@@ -203,6 +204,7 @@ export async function settleQrisIntent(
         .where(eq(venueTables.id, bill.tableId));
       await awardMembershipForBill(tx, bill.id, null);
       await consumePromotionForBill(tx, bill.id, null);
+      await enqueueReceiptForBill(tx, bill.id);
 
       await audit(tx, {
         staffId: null,

@@ -16,6 +16,7 @@ import { audit } from './audit';
 import { recalcBillTotals } from './bill';
 import { awardMembershipForBill } from './membership';
 import { consumePromotionForBill } from './promotions';
+import { enqueueReceiptForBill } from './notifications';
 
 export type SplitGroupInput = {
   label: string;
@@ -362,6 +363,7 @@ export async function payBillSplit(
         .where(eq(venueTables.id, bill.tableId));
       await awardMembershipForBill(tx, bill.id, staffId);
       await consumePromotionForBill(tx, bill.id, staffId);
+      await enqueueReceiptForBill(tx, bill.id);
     }
 
     const cashTendered = paymentRows.reduce(

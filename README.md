@@ -29,6 +29,7 @@ worker).
 | `/staff/admin/schedules` | Jadwal tarif peak/off-peak per meja: hari, jam, prioritas, preview tarif |
 | `/staff/admin/members` | Member & tier: profil, poin, total spend, diskon tier otomatis |
 | `/staff/admin/promotions` | Promo code: persentase/nominal, min spend, kuota, masa berlaku, member-only |
+| `/staff/admin/notifications` | Outbox e-receipt/order-ready, status kirim, retry, provider email/WhatsApp/log |
 | `/staff/admin/reports` | Omzet 7/14/30 hari, billiard vs F&B, metode bayar, top menu & meja, refund, export CSV |
 | `/staff/admin/refunds` | Refund pembayaran bill lunas (partial/full), kategori refund, restock stok, riwayat refund |
 | `/staff/admin/staff` | CRUD staff, role, aktif/nonaktif, reset akses, provisioning Supabase Auth |
@@ -56,6 +57,8 @@ worker).
 - **QRIS dinamis**: create-charge via gateway (mock/Midtrans/Xendit), QR display, polling status, webhook auto-settlement.
 - **Member & loyalty**: tier otomatis berdasarkan total spend, diskon tier di bill, poin earn saat bill lunas, ledger append-only.
 - **Promo engine**: kode promo persentase/nominal, min spend, kuota, masa berlaku, cakupan billiard/F&B, member-only.
+- **E-receipt/outbox**: struk digital ke member (email/WhatsApp/log), retry antrean, tanpa memblokir kasir.
+- **Customer experience**: favorit menu, reorder, ETA status, tracker lebih kaya.
 - **Audit log append-only** untuk start/stop sesi, pause, order, void, diskon, refund, staff, settings, shift, rotasi QR, dll.
 - **Role guard server-side**: owner / cashier / kitchen. Admin hanya owner; staff nonaktif langsung ditolak.
 - **PWA**: installable, cache menu yang pernah dibuka, halaman `/offline`, print browser 80mm.
@@ -247,6 +250,15 @@ const signature = createHmac('sha256', process.env.PAYMENT_WEBHOOK_SECRET)
   .update(payload).digest('hex');
 ```
 
+### 3.9 E-receipt & notifikasi (opsional)
+- Outbox `notification_outbox` diisi otomatis saat bill member lunas (e-receipt) dan saat order siap (jika bill punya member dengan kontak).
+- Provider dipilih otomatis:
+  - `RESEND_API_KEY` → email
+  - `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` → WhatsApp Cloud API
+  - tanpa key → **log lokal** (dev/demo)
+- Pengiriman tidak memblokir kasir. Owner memproses antrean di **Admin → Notifikasi**; item gagal bisa di-retry.
+- Untuk produksi, daftarkan nomor WhatsApp/template dan verifikasi domain email sebelum go-live.
+
 ---
 
 ## 4. Aturan bisnis penting
@@ -334,7 +346,7 @@ public/                         # manifest, sw.js, icons
 | Stock | Opsional per menu (`stock = null` = tak dilacak). |
 
 ### Belum termasuk v1 (roadmap)
-Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (20 item; refund manual, staff/settings, jadwal tarif, reservasi, split bill, QRIS dinamis, member, dan promo sudah ada). Ringkasannya:
+Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (20 item; refund manual, staff/settings, jadwal tarif, reservasi, split bill, QRIS dinamis, member, promo, notifikasi, dan customer experience sudah ada). Ringkasannya:
 
 Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi eksternal, bukan karena terlewat:
 
@@ -399,6 +411,9 @@ Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi e
 - [ ] Member: attach ke bill → diskon tier muncul; bayar → poin & total spend bertambah.
 - [ ] Promo: kode valid diterapkan; min spend/kuota/expired ditolak; bill lunas → kuota promo bertambah.
 - [ ] Promo member-only ditolak untuk bill tanpa member.
+- [ ] E-receipt: bill member lunas → masuk outbox; proses antrean → status sent (log/email/WA).
+- [ ] Notifikasi order ready masuk outbox saat order ready dan bill punya member berkontak.
+- [ ] Customer: tandai favorit, filter favorit, reorder dari tracker, ETA status tampil.
 - [ ] Tutup shift dengan bill open (harus ditolak); setelah semua bill lunas → Z-report.
 - [ ] Webhook payment: signature salah 401, dobel 200 idempoten, nominal salah 400.
 - [ ] QR: copy link, buka incognito, rotate token → link lama 404.

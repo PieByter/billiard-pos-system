@@ -122,6 +122,7 @@ function toCustomerOrders(
       servedAt: order.servedAt?.toISOString() ?? null,
       cancelledAt: order.cancelledAt?.toISOString() ?? null,
       items: items.map((item) => ({
+        menuItemId: item.menuItemId,
         name: item.nameSnapshot,
         qty: item.qty,
         note: item.note,

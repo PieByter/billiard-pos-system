@@ -174,12 +174,22 @@ export function CartSheet({
   );
 }
 
+const ETA_LABEL: Record<string, string> = {
+  pending: 'Menunggu konfirmasi kasir',
+  accepted: 'Estimasi ±15–20 menit',
+  preparing: 'Estimasi ±10 menit',
+  ready: 'Siap diantar ke meja',
+  served: 'Sudah disajikan',
+  cancelled: 'Pesanan dibatalkan',
+};
+
 export function TrackerSheet({
   open,
   onClose,
   orders,
   bill,
   hasOpenServiceRequest,
+  onReorder,
   onCallWaiter,
 }: {
   open: boolean;
@@ -187,6 +197,7 @@ export function TrackerSheet({
   orders: CustomerOrderView[];
   bill: CustomerData['bill'];
   hasOpenServiceRequest: boolean;
+  onReorder: (order: CustomerOrderView) => void;
   onCallWaiter: () => void;
 }) {
   const latest =
@@ -216,6 +227,12 @@ export function TrackerSheet({
       size="md"
       footer={
         <div className="flex flex-col gap-2">
+          {latest && latest.status !== 'cancelled' ? (
+            <Button variant="secondary" size="md" className="w-full" onClick={() => onReorder(latest)}>
+              <Icon name="replay" className="text-[18px]" />
+              Pesan lagi
+            </Button>
+          ) : null}
           <Button variant="primary" size="md" className="w-full" onClick={onCallWaiter}>
             <Icon name="notifications_active" className="text-[18px]" />
             {hasOpenServiceRequest ? 'Waiter sudah dipanggil' : 'Panggil waiter / minta bantuan'}
@@ -246,6 +263,9 @@ export function TrackerSheet({
                   </div>
                   <div className="text-[10px] text-on-surface-variant">
                     {latest.number} · {formatClock(latest.createdAt)}
+                  </div>
+                  <div className="mt-0.5 text-[10px] font-semibold text-secondary">
+                    {ETA_LABEL[latest.status] ?? 'Status live'}
                   </div>
                 </div>
               </div>
