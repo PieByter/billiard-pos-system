@@ -366,7 +366,7 @@ Setelah keputusan di atas dipilih, scaffold repo lengkap meliputi:
 
 ## 11. Roadmap fitur lanjutan (belum dimulai)
 
-Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu, baru optimasi revenue, lalu kedalaman operasional, terakhir skala teknis.** Setiap item wajib mengikuti Definition of Done di §11.6.
+Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu, baru optimasi revenue, lalu kedalaman operasional, terakhir skala teknis.** Setiap item wajib mengikuti Definition of Done di §11.7.
 
 ### 11.1 Fase 1 — Operasional harian
 
@@ -702,17 +702,63 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Rate limit dan Turnstile aktif di production.
 - Alert error sampai ke owner/developer.
 
-### 11.5 Urutan sprint yang disarankan
+### 11.5 Fitur lintas fase
+
+#### 20. Denda & penalty engine
+**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #1 refund, #3 tarif, #4 reservasi, #12 aset (untuk denda kerusakan)
+
+**Masalah:** belum ada mekanisme denda untuk sesi yang melewati waktu, no-show/pembatalan reservasi, kerusakan meja/cue, atau kehilangan bola/aksesori. Semua masih manual dan tidak tercatat di bill/laporan.
+
+**Jenis denda yang dicakup:**
+- **Overtime sesi billiard:** jika sesi punya target selesai dan melewati grace period, denda per interval (mis. per 15 menit) atau tarif overtime khusus.
+- **No-show / pembatalan reservasi:** deposit hangus atau persentase dari deposit, sesuai kebijakan venue.
+- **Kerusakan:** meja, cue, lampu, atau fasilitas lain; nominal manual + bukti foto, wajib approval owner.
+- **Kehilangan:** cue ball, bola, rack, chalk, atau aksesori lain; nominal tetap per item.
+- **Denda manual lain:** pelanggaran aturan venue, keterlambatan pengembalian alat, dll; wajib alasan.
+
+**Aturan perhitungan:**
+- `penalty_rules` menyimpan jenis, metode (`fixed`, `per_interval`, `percent_deposit`), nominal, interval menit, grace period, batas maksimum, target berlaku, dan status aktif.
+- Nominal dan aturan di-snapshot saat denda dibuat; perubahan master rule tidak mengubah denda lama.
+- Overtime otomatis harus idempoten: satu denda per sesi/periode, dilindungi unique key (`sessionId`, `type`, `periodStart`).
+- Denda masuk bill sebagai line item sebelum pembayaran. Bila bill sudah `paid`, denda menjadi receivable/tagihan berikutnya atau dipotong dari deposit (keputusan produk).
+- Default denda **tidak** dikenakan PB1/service charge; simpan flag bila venue ingin memperlakukannya berbeda.
+
+**Approval & pembatalan:**
+- Overtime/no-show otomatis boleh berjalan tanpa approval jika rule aktif.
+- Denda kerusakan/kehilangan/manual wajib approval owner + bukti.
+- Waive denda wajib owner + alasan, tercatat audit; row tidak dihapus, hanya berstatus `waived`/`cancelled`.
+- Kasir tidak boleh menaikkan/menurunkan nominal di luar batas rule tanpa approval.
+
+**UI:**
+- Kasir: tombol **Tambah denda** di bill, pilih jenis/rule, nominal, alasan, upload bukti.
+- Admin: CRUD `penalty_rules` + approval queue + riwayat denda.
+- Reservasi: aksi no-show/cancel yang otomatis menerapkan deposit forfeiture.
+- Aset/maintenance: tombol catat kerusakan/kehilangan.
+- Struk: baris denda terpisah dari billiard/F&B.
+- Laporan: pendapatan denda terpisah; shift cash expected memperhitungkan denda cash.
+
+**Acceptance criteria:**
+- Denda overtime otomatis muncul tepat satu kali per periode, tidak dobel saat halaman di-refresh atau cron berjalan ulang.
+- Denda manual tidak bisa melebihi batas tanpa approval owner.
+- Waive/pembatalan denda tercatat audit dan tidak mengubah histori.
+- Denda masuk total bill dan struk; laporan memisahkan denda dari omzet billiard/F&B.
+- No-show reservation menerapkan deposit forfeiture sesuai policy.
+- Denda kerusakan/kehilangan tidak bisa dibuat tanpa bukti dan approval.
+- Refund/void interaction: denda ikut dihitung neto dan tidak bisa direfund dua kali.
+
+**Dampak skema:** `penalty_rules`, `penalties` (`billId`, `reservationId`, `assetId`, `sessionId`, `type`, `amount`, `status`, `reason`, `evidenceUrl`, `approvedBy`, `waivedReason`, `periodStart`, `uniqueKey`, `createdAt`); kolom agregat `bills.penaltyAmount`; update `recalcBillTotals`, struk, laporan, dan shift cash.
+
+### 11.6 Urutan sprint yang disarankan
 1. **Sprint 1:** #1 Refund, #2 Staff & settings.
-2. **Sprint 2:** #3 Tarif otomatis, #4 Reservation & waitlist.
+2. **Sprint 2:** #3 Tarif otomatis, #4 Reservation & waitlist, #20 Denda overtime/no-show.
 3. **Sprint 3:** #5 Split per item/seat, #13 Kas & shift lanjutan.
 4. **Sprint 4:** #6 Payment gateway, #9 E-receipt.
 5. **Sprint 5:** #7 Membership, #8 Promo engine.
-6. **Sprint 6:** #11 Inventory & BOM, #12 Maintenance.
+6. **Sprint 6:** #11 Inventory & BOM, #12 Maintenance, #20 Denda kerusakan/kehilangan.
 7. **Sprint 7:** #15 Go-live, #16 CI/CD, #19 Hardening (bisa paralel lebih awal).
 8. **Sprint 8:** #14 Multi-outlet, #17 Offline queue, #18 ESC/POS.
 
-### 11.6 Definition of Done (semua item)
+### 11.7 Definition of Done (semua item)
 - Migration Drizzle + seed/demo data bila relevan.
 - Service layer + server action dengan validasi Zod dan role guard.
 - UI responsif (mobile kasir + desktop admin), empty/error/loading state.
@@ -722,8 +768,9 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - `npm run typecheck`, `npm test`, `npm run build` lulus.
 - README/PRD diperbarui; tidak ada float untuk uang; waktu memakai DB/`Asia/Jakarta`.
 
-### 11.7 Keputusan produk yang harus diambil sebelum mulai
+### 11.8 Keputusan produk yang harus diambil sebelum mulai
 - Refund: siapa yang boleh approve, apakah stok dikembalikan, bagaimana refund QRIS.
+- Denda: kena PB1/service atau tidak, tarif overtime memakai rate normal atau multiplier, ke mana denda ditagih jika bill sudah lunas, batas maksimum, dan siapa yang boleh waive.
 - Staff: undang via Supabase invite atau buat password sementara?
 - Tarif: resolusi overlap jadwal dan override hari libur.
 - Reservasi: deposit hangus/no-show, buffer cleaning berapa menit.

@@ -287,13 +287,14 @@ public/                         # manifest, sw.js, icons
 | Stock | Opsional per menu (`stock = null` = tak dilacak). |
 
 ### Belum termasuk v1 (roadmap)
-Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (19 item, mulai dari refund flow). Ringkasannya:
+Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (20 item, mulai dari refund flow). Ringkasannya:
 
 Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi eksternal, bukan karena terlewat:
 
 - **Auto-switch tarif peak/off-peak.** Saat ini tarif dipilih per meja dan di-snapshot saat start. Untuk harga otomatis per jam/hari butuh tabel jadwal tarif + UI pengaturan.
 - **Staff management UI.** Staff masih di-provision lewat seed/SQL + Supabase Auth (lihat §3.4) agar tidak ada endpoint admin yang bisa membuat auth user tanpa service role.
 - **QRIS create-charge / refund otomatis.** Yang tersedia baru webhook settlement opsional; pembuatan QR dinamis dan refund butuh payment gateway (Midtrans/Xendit).
+- **Denda & penalty engine.** Overtime sesi, no-show reservasi, kerusakan/kehilangan alat, dan denda manual belum ada aturan, approval, atau pencatatan di bill.
 - **Offline write queue.** PWA menyimpan menu read-only; order/pembayaran tetap butuh jaringan (sesuai PRD v1).
 - **ESC/POS langsung / print agent.** Cetak memakai `window.print()` 80mm; printer LAN perlu driver di komputer kasir.
 - **Cloudflare Turnstile.** Self-order sudah dilindungi status pending + rate limit 5 order/menit per meja; Turnstile bisa ditambah jika spam QR terbukti jadi masalah.
