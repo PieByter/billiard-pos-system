@@ -359,3 +359,379 @@ Setelah keputusan di atas dipilih, scaffold repo lengkap meliputi:
 3. UI kasir (grid meja + timer)
 4. Halaman customer `/t/[token]`
 5. Layar dapur (Realtime)
+
+> **Status:** kelima langkah di atas sudah diimplementasi di v1. Mulai bagian 11, daftar di bawah adalah fitur yang **belum dimulai** dan menjadi backlog resmi pengembangan berikutnya.
+
+---
+
+## 11. Roadmap fitur lanjutan (belum dimulai)
+
+Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu, baru optimasi revenue, lalu kedalaman operasional, terakhir skala teknis.** Setiap item wajib mengikuti Definition of Done di §11.6.
+
+### 11.1 Fase 1 — Operasional harian
+
+#### 1. Refund / void setelah pembayaran
+**Status:** belum dimulai · **Prioritas:** P0 · **Dependensi:** —
+
+**Masalah:** `voidBill` menolak bill yang sudah memiliki payment dan menyebut “refund flow”, tetapi flow refund belum ada. Kasir tidak punya jalur resmi untuk membatalkan transaksi yang sudah lunas.
+
+**Scope:**
+- Refund penuh atau sebagian, terhubung ke `payments` asal.
+- Metode refund: cash, QRIS/transfer (via gateway bila ada), atau koreksi manual owner.
+- Alasan wajib, approval owner/supervisor, dan opsi mengembalikan stok.
+- Dampak ke laporan omzet, shift cash expected, dan struk.
+- Refund tidak boleh melebihi nilai payment asal dan harus idempoten.
+
+**Acceptance criteria:**
+- Owner bisa refund 1 payment penuh/sebagian; refund tercatat di `refunds` dan audit log.
+- Bill tetap `paid` dengan `refundedAmount`; laporan memakai omzet neto.
+- Refund cash mengurangi expected cash shift secara proporsional.
+- Refund gateway memanggil provider refund API dan menangani webhook gagal/duplikat.
+- Tidak bisa refund dua kali untuk payment yang sama melebihi nominal.
+
+**Dampak skema:** tabel `refunds` (`billId`, `paymentId`, `amount`, `method`, `reason`, `restocked`, `approvedBy`, `externalRef`, `createdAt`); kolom agregat `bills.refundedAmount`; status payment/refund.
+
+#### 2. Staff management & venue settings
+**Status:** belum dimulai · **Prioritas:** P0 · **Dependensi:** Supabase service role / invite flow
+
+**Masalah:** staff masih di-provision lewat seed/SQL, dan pajak/service charge/jam operasional belum bisa diubah owner dari UI.
+
+**Scope:**
+- CRUD staff: nama, email, role (`owner|cashier|kitchen`), aktif/nonaktif, reset akses.
+- Undang staff via Supabase Auth invite; mode demo memakai password hash lokal.
+- Cegah menonaktifkan owner terakhir atau diri sendiri.
+- Halaman settings venue: nama, alamat, timezone, jam buka/tutup, PB1, service charge, footer struk, warning menit.
+- Perubahan settings hanya memengaruhi bill baru; bill berjalan tetap memakai snapshot.
+
+**Acceptance criteria:**
+- Owner bisa menambah staff dan staff langsung bisa login setelah auth user aktif.
+- Staff nonaktif tidak bisa login dan sesi lama ditolak.
+- Semua perubahan staff/settings masuk audit log.
+- Bill baru memakai tarif pajak/service terbaru; bill lama tidak berubah.
+
+**Dampak skema:** tabel `venue_settings` (singleton per outlet), perluasan `profiles` bila perlu; provisioning auth di server action dengan service role.
+
+#### 3. Peak/off-peak rate otomatis
+**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #2 settings
+
+**Masalah:** `billiard_rates` masih satu tarif per meja. “Happy Hour” hanya nama rate yang di-assign manual, belum otomatis berdasarkan jam/hari.
+
+**Scope:**
+- Jadwal tarif per meja: hari dalam minggu, jam mulai/selesai, rate, prioritas, aktif.
+- Resolusi tarif saat `startSession` memakai timezone `Asia/Jakarta`; fallback ke `venue_tables.rateId`.
+- Preview tarif yang akan dipakai di dialog start.
+- Snapshot tarif tetap berlaku selama sesi; perubahan jadwal tidak mengubah sesi berjalan.
+- Dukungan override hari libur (opsional fase berikutnya).
+
+**Acceptance criteria:**
+- Sesi yang mulai 16:59 dan 17:01 memakai rate yang benar pada batas jadwal.
+- Dua jadwal overlap ditolak atau diselesaikan oleh prioritas yang eksplisit.
+- Tidak ada perubahan tarif di tengah sesi.
+- Unit test resolusi jadwal + integration test start sesi.
+
+**Dampak skema:** tabel `table_rate_schedules` (`tableId`, `rateId`, `daysOfWeek`, `startMinute`, `endMinute`, `priority`, `active`).
+
+#### 4. Reservation & waitlist
+**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #2, #3
+
+**Masalah:** meja hanya bisa dipakai walk-in; belum ada booking, deposit, atau antrean.
+
+**Scope:**
+- Reservasi: meja, nama/telepon, tanggal & jam mulai, durasi, jumlah pax, deposit, catatan, status.
+- Cek bentrok dengan sesi berjalan + buffer cleaning.
+- Check-in → mulai sesi/buka bill; no-show → lepas meja.
+- Waitlist walk-in: antrean, estimasi tunggu, panggil tamu.
+- Deposit masuk payment/bill atau ditahan terpisah; refund mengikuti kebijakan.
+
+**Acceptance criteria:**
+- Tidak bisa double-book meja pada rentang waktu yang sama.
+- Reservasi bisa dikonversi menjadi sesi tanpa membuat bill ganda.
+- No-show dan pembatalan tercatat di audit.
+- Waitlist bisa dipanggil dan ditandai datang/batal.
+
+**Dampak skema:** `reservations`, `waitlist_entries`, relasi opsional ke `bills`/`payments`.
+
+#### 5. Split bill per item/seat
+**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #1
+
+**Masalah:** split bill saat ini hanya per metode pembayaran. Rombongan tidak bisa membagi per item atau per pemain.
+
+**Scope:**
+- Alokasi item/sesi ke beberapa split group (seat/pemain).
+- Pembayaran parsial per group; bill baru ditutup setelah semua group lunas.
+- Tampilkan sisa belum teralokasi dan validasi total alokasi = total bill.
+- Struk per split group.
+- Refund mengikuti payment/group asal.
+
+**Acceptance criteria:**
+- Satu item tidak bisa dialokasikan dua kali.
+- Total alokasi + pajak/service = total bill.
+- Pembayaran parsial tidak menutup bill sampai lunas.
+- Split group dan pembayaran tercatat di audit.
+
+**Dampak skema:** `bill_split_groups`, `payment_allocations` (payment → order item/session/group).
+
+### 11.2 Fase 2 — Revenue & guest experience
+
+#### 6. Payment gateway QRIS
+**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #1, kredensial provider
+
+**Scope:**
+- Adapter provider (Midtrans/Xendit) dengan interface `createCharge`, `getStatus`, `refund`.
+- QR dinamis per bill/split, expiry, polling status, webhook idempotent.
+- Simpan `provider`, `providerRef`, `status`, `paidAt`; rekonsiliasi otomatis.
+- Refund otomatis lewat provider; fallback manual bila gagal.
+- Mode sandbox + panduan production.
+
+**Acceptance criteria:**
+- Charge QRIS bisa dibuat dan dibayar di sandbox end-to-end.
+- Webhook dobel tidak membuat payment ganda.
+- Nominal/expiry/refund tervalidasi.
+- Reconciliation report mencocokkan payment gateway vs bill.
+
+#### 7. Membership & loyalty
+**Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #2
+
+**Scope:**
+- Profil member (nama, telepon/email unik, consent).
+- Tier harga, poin earn/redeem, voucher, deposit saldo.
+- Link bill ke member; lookup cepat di kasir.
+- Ledger poin append-only; poin tidak boleh negatif.
+- Riwayat kunjungan dan total belanja.
+
+**Acceptance criteria:**
+- Poin bertambah saat bill lunas dan berkurang saat redeem, idempoten.
+- Tier pricing diterapkan sebelum pajak/service.
+- Member bisa dicari via telepon/email.
+- Data pribadi tidak bocor ke endpoint publik.
+
+**Dampak skema:** `members`, `member_tiers`, `loyalty_ledger`, `vouchers`, `member_deposits`.
+
+#### 8. Promo engine
+**Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #7
+
+**Scope:**
+- Promo code, bundle, minimum spend, diskon per kategori/menu, happy hour otomatis.
+- Aturan stacking, batas pemakaian, kuota per member.
+- Preview dampak ke bill dan audit redemption.
+- Promo tidak boleh membuat total negatif.
+
+**Acceptance criteria:**
+- Promo valid mengurangi total sesuai aturan dan tercatat.
+- Promo kedaluwarsa/kuota habis ditolak.
+- Tidak bisa double-redeem.
+- Laporan memisahkan omzet kotor, diskon, dan omzet neto.
+
+**Dampak skema:** `promotions`, `promotion_rules`, `promotion_redemptions`.
+
+#### 9. E-receipt & notifikasi
+**Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #6
+
+**Scope:**
+- Outbox notifikasi (WhatsApp Cloud API/email) dengan retry.
+- Kirim struk digital, link bill, dan notifikasi “order siap”.
+- Opt-in/opt-out dan template pesan.
+- Status kirim/gagal terlihat di admin.
+
+**Acceptance criteria:**
+- Struk terkirim setelah bill lunas tanpa menahan alur kasir.
+- Retry tidak mengirim duplikat.
+- Opt-out dihormati.
+- Tidak ada data sensitif di log.
+
+**Dampak skema:** `notification_outbox`, `member_contacts`/consent.
+
+#### 10. Customer experience lanjutan
+**Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #9
+
+**Scope:**
+- Favorit/reorder, estimasi waktu saji, tracker timeline lebih kaya.
+- Web push untuk “order siap” dan “waiter datang”.
+- Rating/feedback setelah bayar.
+- Riwayat order terakhir via token meja.
+
+**Acceptance criteria:**
+- Tamu bisa reorder tanpa login.
+- Push hanya dikirim dengan izin.
+- Tracking tetap bekerja saat offline read-only.
+
+### 11.3 Fase 3 — Kedalaman operasional
+
+#### 11. Inventory & BOM
+**Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #2
+
+**Scope:**
+- Bahan baku, resep per menu, konversi satuan, supplier, purchase order, stock opname.
+- Auto-deduct stok bahan saat order; low-stock alert.
+- Stock movement append-only; koreksi manual dengan alasan.
+- Kebijakan stok negatif eksplisit (block/warn).
+
+**Acceptance criteria:**
+- Order mengurangi bahan sesuai resep secara atomik.
+- Oversell bahan dicegah atau diberi warning sesuai kebijakan.
+- PO dan opname menyesuaikan stok dengan audit.
+- Laporan cost of goods tersedia.
+
+**Dampak skema:** `ingredients`, `recipes`, `stock_movements`, `suppliers`, `purchase_orders`, `stock_counts`.
+
+#### 12. Maintenance cue & alat
+**Status:** belum dimulai · **Prioritas:** P3 · **Dependensi:** #11
+
+**Scope:**
+- Inventaris cue/meja/peralatan, jadwal re-tipping, servis, dan log kerusakan.
+- Reminder jatuh tempo; biaya perawatan; vendor.
+- Status meja “maintenance” yang memblokir start sesi.
+
+**Acceptance criteria:**
+- Meja maintenance tidak bisa dipakai.
+- Riwayat servis per aset tercatat.
+- Reminder muncul di admin.
+
+**Dampak skema:** `assets`, `maintenance_schedules`, `maintenance_logs`.
+
+#### 13. Kas & shift lanjutan
+**Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #1
+
+**Scope:**
+- Cash drop, petty cash, transfer kas antar shift, koreksi kas.
+- Alasan selisih wajib; approval owner untuk koreksi besar.
+- Rumus expected cash mempertimbangkan refund, drop, dan petty cash.
+- X/Z report menampilkan movement kas, bukan hanya total.
+
+**Acceptance criteria:**
+- Setiap movement kas memiliki bukti/aktor/alasan.
+- Expected cash selalu dapat direkonsiliasi.
+- Tidak bisa menutup shift dengan movement pending.
+- Laporan kas cocok dengan laci fisik.
+
+**Dampak skema:** `cash_movements`, `shift_handovers`.
+
+#### 14. Multi-outlet
+**Status:** belum dimulai · **Prioritas:** P3 · **Dependensi:** #2, arsitektur auth
+
+**Scope:**
+- Tabel `outlets`; `outletId` di seluruh data operasional.
+- Staff bisa di-assign ke satu/beberapa outlet.
+- Harga, menu, meja, shift, laporan per outlet.
+- RLS dan server action wajib memfilter outlet.
+- Switch outlet untuk owner.
+
+**Acceptance criteria:**
+- Data antar-outlet tidak bocor.
+- Laporan dan shift terisolasi.
+- Owner bisa berpindah outlet tanpa logout.
+- Migration data lama masuk ke outlet default.
+
+### 11.4 Fase 4 — Teknis & skala
+
+#### 15. Go-live production
+**Status:** belum dimulai · **Prioritas:** P0 sebelum operasi nyata · **Dependensi:** kredensial Supabase/Vercel
+
+**Scope:**
+- Deploy Vercel + Supabase, env production, migration + seed katalog.
+- Provision Supabase Auth, matikan signup publik, rotate password demo.
+- Jalankan `supabase/realtime.sql`, set `NEXT_PUBLIC_APP_URL`.
+- Backup otomatis, monitoring uptime, alert error, rollback plan.
+- Smoke test `/api/health`, login role, QR, print, webhook.
+
+**Acceptance criteria:**
+- Semua checklist QA di README lulus di production.
+- Health check `{ ok: true }` dan tidak ada error log kritis.
+- Backup & restore pernah diuji.
+- Domain final dipakai di QR.
+
+#### 16. CI/CD + E2E test
+**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #15
+
+**Scope:**
+- GitHub Actions: install, typecheck, unit test, build.
+- E2E Playwright: login, start/pause/stop/pay, self-order → approve → KDS, split, refund.
+- Seed PGlite terisolasi; artifact screenshot/video saat gagal.
+- Branch protection + preview deployment.
+
+**Acceptance criteria:**
+- PR tidak bisa merge jika typecheck/test/build/E2E gagal.
+- E2E berjalan < 10 menit dan stabil.
+- Preview deployment teruji sebelum merge.
+
+#### 17. Offline write queue
+**Status:** belum dimulai · **Prioritas:** P3 · **Dependensi:** #16
+
+**Scope:**
+- IndexedDB queue untuk order/payment saat offline.
+- Idempotency key + replay + conflict resolution.
+- UI indikator pending/sync/gagal.
+- Kebijakan konflik: tolak, gabung, atau minta kasir review.
+- Keamanan: data antrean tidak boleh terbaca user lain di perangkat shared.
+
+**Acceptance criteria:**
+- Order offline tidak dobel saat koneksi kembali.
+- Konflik stok/harga ditangani eksplisit.
+- Kasir melihat status sinkronisasi.
+- Tidak ada payment yang “hilang” tanpa jejak.
+
+#### 18. ESC/POS langsung
+**Status:** belum dimulai · **Prioritas:** P3 · **Dependensi:** print agent lokal
+
+**Scope:**
+- Print agent lokal (Node) atau WebUSB/Web Bluetooth.
+- Template struk, tiket kitchen, X/Z report; antrean print + retry.
+- Printer per station; test print; fallback `window.print()`.
+- Encoding karakter Indonesia dan logo.
+
+**Acceptance criteria:**
+- Cetak 80mm tanpa dialog browser.
+- Print gagal tidak menggandakan tiket.
+- Bisa pilih printer per station.
+- Fallback tetap tersedia.
+
+#### 19. Hardening
+**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #15
+
+**Scope:**
+- Turnstile pada self-order publik.
+- Rate limit edge per token/IP.
+- CSP, security headers, redaksi log, dependency scanning.
+- Sentry/error monitoring + alert.
+- Audit log filter, export, retensi.
+- Backup & disaster recovery terdokumentasi.
+
+**Acceptance criteria:**
+- Scan keamanan dasar tidak menemukan secret/PII di log.
+- CSP tidak memblokir fungsi inti.
+- Rate limit dan Turnstile aktif di production.
+- Alert error sampai ke owner/developer.
+
+### 11.5 Urutan sprint yang disarankan
+1. **Sprint 1:** #1 Refund, #2 Staff & settings.
+2. **Sprint 2:** #3 Tarif otomatis, #4 Reservation & waitlist.
+3. **Sprint 3:** #5 Split per item/seat, #13 Kas & shift lanjutan.
+4. **Sprint 4:** #6 Payment gateway, #9 E-receipt.
+5. **Sprint 5:** #7 Membership, #8 Promo engine.
+6. **Sprint 6:** #11 Inventory & BOM, #12 Maintenance.
+7. **Sprint 7:** #15 Go-live, #16 CI/CD, #19 Hardening (bisa paralel lebih awal).
+8. **Sprint 8:** #14 Multi-outlet, #17 Offline queue, #18 ESC/POS.
+
+### 11.6 Definition of Done (semua item)
+- Migration Drizzle + seed/demo data bila relevan.
+- Service layer + server action dengan validasi Zod dan role guard.
+- UI responsif (mobile kasir + desktop admin), empty/error/loading state.
+- Audit log untuk mutasi finansial dan perubahan konfigurasi.
+- Idempotency untuk order/payment/refund/webhook.
+- Unit test untuk aturan bisnis + integration test untuk alur kritis.
+- `npm run typecheck`, `npm test`, `npm run build` lulus.
+- README/PRD diperbarui; tidak ada float untuk uang; waktu memakai DB/`Asia/Jakarta`.
+
+### 11.7 Keputusan produk yang harus diambil sebelum mulai
+- Refund: siapa yang boleh approve, apakah stok dikembalikan, bagaimana refund QRIS.
+- Staff: undang via Supabase invite atau buat password sementara?
+- Tarif: resolusi overlap jadwal dan override hari libur.
+- Reservasi: deposit hangus/no-show, buffer cleaning berapa menit.
+- Split: alokasi per item, per seat, atau keduanya.
+- Gateway: Midtrans atau Xendit; mata uang/refund policy.
+- Membership: poin kedaluwarsa, tier, dan consent data pribadi.
+- Inventory: boleh stok negatif atau diblokir.
+- Multi-outlet: satu database shared atau database per outlet.
+- Offline: konflik order/payment diselesaikan bagaimana.
+
+---

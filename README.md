@@ -287,6 +287,8 @@ public/                         # manifest, sw.js, icons
 | Stock | Opsional per menu (`stock = null` = tak dilacak). |
 
 ### Belum termasuk v1 (roadmap)
+Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (19 item, mulai dari refund flow). Ringkasannya:
+
 Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi eksternal, bukan karena terlewat:
 
 - **Auto-switch tarif peak/off-peak.** Saat ini tarif dipilih per meja dan di-snapshot saat start. Untuk harga otomatis per jam/hari butuh tabel jadwal tarif + UI pengaturan.
