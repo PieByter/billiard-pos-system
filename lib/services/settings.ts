@@ -1,7 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { dbNow, getDb } from '@/lib/db';
 import { venueSettings, type VenueSettings } from '@/lib/db/schema';
+import { DEFAULT_OUTLET_ID } from '@/lib/constants';
 import { AppError } from '@/lib/errors';
+import { getActiveOutletId } from '@/lib/outlet';
 import { audit } from './audit';
 
 export type VenueSettingsInput = {
@@ -16,6 +18,7 @@ export type VenueSettingsInput = {
 
 export const DEFAULT_VENUE_SETTINGS: VenueSettings = {
   id: 'default',
+  outletId: DEFAULT_OUTLET_ID,
   venueName: 'Cue & Tap',
   address: '',
   timezone: 'Asia/Jakarta',
@@ -27,13 +30,19 @@ export const DEFAULT_VENUE_SETTINGS: VenueSettings = {
   updatedBy: null,
 };
 
-export async function loadVenueSettings(): Promise<VenueSettings> {
+export async function loadVenueSettings(outletId?: string): Promise<VenueSettings> {
   const db = await getDb();
-  const [settings] = await db.select().from(venueSettings).limit(1);
-  return settings ?? DEFAULT_VENUE_SETTINGS;
+  const scope = outletId ?? (await getActiveOutletId());
+  const [settings] = await db
+    .select()
+    .from(venueSettings)
+    .where(eq(venueSettings.outletId, scope))
+    .limit(1);
+  return settings ?? { ...DEFAULT_VENUE_SETTINGS, outletId: scope };
 }
 
 export async function saveVenueSettings(staffId: string, input: VenueSettingsInput) {
+  const outletId = await getActiveOutletId();
   const venueName = input.venueName.trim();
   if (venueName.length < 2) throw new AppError('INVALID_NAME', 'Nama venue wajib diisi.');
   if (input.taxRateBps < 0 || input.taxRateBps > 10_000) {
@@ -52,7 +61,8 @@ export async function saveVenueSettings(staffId: string, input: VenueSettingsInp
     const [settings] = await tx
       .insert(venueSettings)
       .values({
-        id: 'default',
+        id: outletId === DEFAULT_OUTLET_ID ? 'default' : `outlet-${outletId}`,
+        outletId,
         venueName,
         address: input.address?.trim() ?? '',
         timezone: input.timezone?.trim() || 'Asia/Jakarta',
@@ -99,6 +109,11 @@ export async function saveVenueSettings(staffId: string, input: VenueSettingsInp
 
 export async function getVenueSettingsForAdmin() {
   const db = await getDb();
-  const [settings] = await db.select().from(venueSettings).where(eq(venueSettings.id, 'default')).limit(1);
-  return settings ?? DEFAULT_VENUE_SETTINGS;
+  const outletId = await getActiveOutletId();
+  const [settings] = await db
+    .select()
+    .from(venueSettings)
+    .where(and(eq(venueSettings.outletId, outletId)))
+    .limit(1);
+  return settings ?? { ...DEFAULT_VENUE_SETTINGS, outletId };
 }

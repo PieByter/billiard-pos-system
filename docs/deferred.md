@@ -1,51 +1,21 @@
-# Item yang sengaja ditunda
+# Item yang masih parsial / butuh lingkungan eksternal
 
-Dokumen ini mencatat item PRD yang **belum bisa diselesaikan penuh** di lingkungan pengembangan ini, alasan teknisnya, dan langkah lanjutannya.
+Batch roadmap #11–#20 sudah diimplementasi. Dokumen ini hanya mencatat sisa pekerjaan yang **belum bisa diverifikasi penuh** di repo/demo, bukan fitur yang belum dibuat.
 
-## #14 Multi-outlet
-**Status:** ditunda.
+## Hardware & kredensial
+- **#18 ESC/POS:** queue, print agent API, template teks, retry, dan tombol WebUSB sudah ada. Cetak fisik belum diuji karena tidak ada printer thermal di lingkungan ini. Lihat `docs/advanced-features.md` §3.
+- **#15 production:** Supabase/Vercel/domain/backup belum bisa diuji tanpa kredensial. Checklist ada di `docs/go-live.md`.
+- **Gateway asli:** Midtrans/Xendit refund, callback signature, dan WhatsApp/Resend butuh kredensial production/sandbox. Mock sudah diuji.
+- **#19 Turnstile/Sentry:** security headers dan rate limit ada; Turnstile, Sentry, dan audit log filtering lanjutan belum.
 
-Alasan: menambahkan `outletId` ke hampir seluruh tabel operasional (meja, bill, order, payment, shift, member, promo, inventory, audit), lalu memfilter setiap query/server action dan RLS per outlet. Salah satu query yang terlewat bisa membocorkan data antar-cabang.
+## Sisa fungsional
+- **#6:** refund gateway sudah otomatis, tetapi rekonsiliasi refund webhook provider belum diuji.
+- **#10:** web push dan rating/feedback pasca-order belum.
+- **#13:** transfer kas antar shift dengan approval berjenjang belum; cash drop/petty/transfer/adjustment sudah.
+- **#16:** E2E Playwright belum; CI unit + integration + build sudah.
+- **#11:** partial receipt PO, retur supplier, dan PO approval berjenjang belum.
+- **#20:** overtime dihitung saat stop sesi (bukan live), dan forfeit deposit no-show belum memotong saldo member.
 
-Langkah lanjut:
-1. Tabel `outlets` + `profiles_outlets`.
-2. Migration kolom `outlet_id` + backfill ke outlet default.
-3. Helper `requireOutlet()` dan `withOutletScope()`.
-4. RLS per outlet di Supabase.
-5. UI switch outlet untuk owner.
-
-## #17 Offline write queue
-**Status:** ditunda.
-
-Alasan: order/payment offline membutuhkan idempotency, replay queue, konflik stok/harga, dan rekonsiliasi pembayaran. PRD v1 memang menetapkan PWA read-only + SOP manual.
-
-Langkah lanjut:
-1. IndexedDB queue + service worker background sync.
-2. Idempotency key per operasi.
-3. Kebijakan konflik eksplisit (tolak/review/gabung).
-4. UI status pending/sync/gagal.
-5. Uji dua kasir offline pada meja yang sama.
-
-## #18 ESC/POS langsung
-**Status:** ditunda.
-
-Alasan: Vercel tidak dapat menjangkau printer LAN. Butuh print agent lokal/WebUSB/Web Bluetooth dan pengujian perangkat keras.
-
-Langkah lanjut:
-1. Pilih transport: local agent (Node) atau WebUSB.
-2. Antrean print + retry + idempotency.
-3. Template 58/80mm dan encoding karakter Indonesia.
-4. Test print per station.
-5. Fallback `window.print()` tetap dipertahankan.
-
-## Sisa parsial lain
-- #6: refund gateway otomatis dan QRIS per split group.
-- #7: redeem poin, voucher, deposit saldo.
-- #8: bundle, stacking, happy hour otomatis.
-- #9: cron pengiriman otomatis, template kustom, opt-out per channel.
-- #10: web push dan rating/feedback.
-- #11: supplier, purchase order, dan laporan HPP.
-- #12: blokir start sesi untuk meja berstatus maintenance.
-- #13: transfer kas antar shift dan approval berjenjang.
-- #19: Turnstile, Sentry, dan audit log filtering lanjutan.
-- #20: denda overtime otomatis dan integrasi deposit no-show.
+## Multi-outlet & offline
+- **#14:** scoping query dan outlet switcher sudah; RLS template tersedia di `docs/rls-outlets.sql` tetapi belum diaktifkan karena membutuhkan `app.outlet_id` per request.
+- **#17:** order kasir & customer sudah queued; pembayaran/refund sengaja tidak di-queue. Belum memakai Background Sync API dan belum ada resolusi konflik otomatis selain retry 3x.

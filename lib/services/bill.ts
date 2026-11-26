@@ -9,6 +9,7 @@ import {
   orderItems,
   orders,
   venueSettings,
+  venueTables,
   type Bill,
 } from '@/lib/db/schema';
 import { SERVICE_RATE_BPS, TAX_RATE_BPS } from '@/lib/constants';
@@ -20,6 +21,11 @@ import {
 } from '@/lib/billing';
 import { billNumber } from '@/lib/ids';
 import { restoreIngredientsForOrder } from './inventory';
+import {
+  listBillPromotions,
+  syncAutoPromotions,
+  syncBillPromotionAggregate,
+} from './promotion-engine';
 
 /** Ambil bill yang masih open, atau buat baru secara atomik. */
 export async function ensureOpenBill(
@@ -39,12 +45,19 @@ export async function ensureOpenBill(
   const existing = await findOpen();
   if (existing) return existing;
 
-  const [settings] = await tx.select().from(venueSettings).limit(1);
+  const [table] = await tx.select().from(venueTables).where(eq(venueTables.id, tableId)).limit(1);
+  if (!table) throw new Error('Meja tidak ditemukan.');
+  const [settings] = await tx
+    .select()
+    .from(venueSettings)
+    .where(eq(venueSettings.outletId, table.outletId))
+    .limit(1);
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const [created] = await tx
       .insert(bills)
       .values({
+        outletId: table.outletId,
         billNumber: billNumber(),
         tableId,
         openedBy,
@@ -141,27 +154,44 @@ export async function recalcBillTotals(
     }
   }
 
-  const totalDiscount = bill.discountAmount + memberDiscountAmount + bill.promoDiscountAmount;
+  // Simpan subtotal sementara agar promo scope "all" membaca basis terbaru.
+  await tx.update(bills).set({ subtotal: Math.max(0, subtotal) }).where(eq(bills.id, billId));
+  await syncAutoPromotions(tx, { ...bill, subtotal: Math.max(0, subtotal) }, now);
+  const promoRows = await listBillPromotions(tx, billId);
+  const promoDiscountAmount = promoRows.reduce((sum, row) => sum + row.discountAmount, 0);
+  const promotionCode = promoRows.length ? promoRows.map((row) => row.code).join(' + ') : null;
+  const promotionId = promoRows[0]?.promotionId ?? null;
+
+  const totalDiscount =
+    bill.discountAmount +
+    memberDiscountAmount +
+    promoDiscountAmount +
+    bill.pointsDiscountAmount +
+    bill.voucherDiscountAmount;
   const totals = computeBillTotals({
     subtotal,
     discountAmount: totalDiscount,
     taxRateBps: bill.taxRateBps,
     serviceRateBps: bill.serviceRateBps,
   });
+  const grandTotal = totals.total + bill.penaltyAmount;
 
   const [updated] = await tx
     .update(bills)
     .set({
       subtotal: totals.subtotal,
       memberDiscountAmount,
+      promoDiscountAmount,
+      promotionCode,
+      promotionId,
       taxAmount: totals.taxAmount,
       serviceAmount: totals.serviceAmount,
-      total: totals.total + bill.penaltyAmount,
+      total: grandTotal,
     })
     .where(eq(bills.id, billId))
     .returning();
 
-  return { bill: updated, total: totals.total };
+  return { bill: updated, total: grandTotal };
 }
 
 /** Kembalikan stok item ketika order dibatalkan / bill di-void. */

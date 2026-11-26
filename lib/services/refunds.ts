@@ -2,7 +2,9 @@ import { and, eq, ne, sql } from 'drizzle-orm';
 import { dbNow, getDb } from '@/lib/db';
 import { bills, orders, payments, refunds } from '@/lib/db/schema';
 import { AppError } from '@/lib/errors';
+import { getGatewayConfig, refundQrisCharge } from '@/lib/payments/gateway';
 import { restoreOrderStock } from './bill';
+import { refundToMemberBalance } from './membership';
 import { audit } from './audit';
 
 export type RefundCategory = 'billiard' | 'fnb' | 'other';
@@ -77,6 +79,24 @@ export async function refundPayment(staffId: string, input: RefundInput) {
       );
     }
 
+    let gatewayRefunded = false;
+    let balanceRefunded = 0;
+    const externalRef = input.externalRef?.trim() || null;
+    if (!externalRef && payment.method === 'qris' && payment.externalRef?.startsWith('gateway:')) {
+      const gatewayOrderId = payment.externalRef.slice('gateway:'.length);
+      const config = getGatewayConfig();
+      if (config.enabled && config.provider) {
+        const ok = await refundQrisCharge(gatewayOrderId, amount, reason);
+        if (!ok) {
+          throw new AppError(
+            'GATEWAY_REFUND_FAILED',
+            'Gateway menolak refund. Coba lagi atau catat refund manual dengan referensi eksternal.',
+          );
+        }
+        gatewayRefunded = true;
+      }
+    }
+
     const wantsRestock = Boolean(input.restock);
     if (wantsRestock && nextRefunded !== bill.total) {
       throw new AppError(
@@ -103,16 +123,26 @@ export async function refundPayment(staffId: string, input: RefundInput) {
       }
     }
 
+    if (payment.method === 'balance') {
+      const restored = await refundToMemberBalance(tx, bill, amount, staffId, now);
+      balanceRefunded = restored?.balance ?? 0;
+    }
+
     const [refund] = await tx
       .insert(refunds)
       .values({
+        outletId: bill.outletId,
         billId: bill.id,
         paymentId: payment.id,
         amount,
         category: input.category,
         reason,
         restocked: wantsRestock,
-        externalRef: input.externalRef?.trim() || null,
+        externalRef:
+          externalRef ??
+          (gatewayRefunded
+            ? `gateway-refund:${payment.externalRef?.slice('gateway:'.length)}:${amount}:${now.getTime()}`
+            : null),
         approvedBy: staffId,
         createdAt: now,
       })
@@ -136,6 +166,8 @@ export async function refundPayment(staffId: string, input: RefundInput) {
         category: input.category,
         reason,
         restocked: wantsRestock,
+        gatewayRefunded,
+        balanceRefunded,
         refundedTotal: nextRefunded,
       },
       at: now,
@@ -149,6 +181,8 @@ export async function refundPayment(staffId: string, input: RefundInput) {
       refundedTotal: nextRefunded,
       remainingRefundable: bill.total - nextRefunded,
       restocked: wantsRestock,
+      gatewayRefunded,
+      balance: balanceRefunded || null,
     };
   });
 }

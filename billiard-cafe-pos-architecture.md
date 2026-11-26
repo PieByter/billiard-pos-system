@@ -368,12 +368,12 @@ Setelah keputusan di atas dipilih, scaffold repo lengkap meliputi:
 
 Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu, baru optimasi revenue, lalu kedalaman operasional, terakhir skala teknis.** Setiap item wajib mengikuti Definition of Done di §11.7.
 
-**Status implementasi:** item **#1–#13, #15 (checklist), #16 (CI), #19 (headers), #20 (denda manual)** sudah diimplementasi sebagian di v1.1. **#14 multi-outlet, #17 offline queue, #18 ESC/POS** sengaja ditunda dan dijelaskan di `docs/deferred.md`.
+**Status implementasi:** item **#1–#20** sudah diimplementasi. Sisa yang membutuhkan hardware/kredensial/lingkungan eksternal (cetak fisik, gateway asli, deploy production, E2E Playwright, Turnstile/Sentry, web push, approval transfer kas) dicatat di `docs/deferred.md`. Detail implementasi ada di `docs/advanced-features.md`.
 
 ### 11.1 Fase 1 — Operasional harian
 
 #### 1. Refund / void setelah pembayaran
-**Status:** selesai sebagian (refund manual v1.1; refund gateway menyusul di #6) · **Prioritas:** P0 · **Dependensi:** —
+**Status:** selesai (v1.2; manual + gateway otomatis untuk QRIS, refund saldo member) · **Prioritas:** P0 · **Dependensi:** —
 
 **Masalah:** `voidBill` menolak bill yang sudah memiliki payment dan menyebut “refund flow”, tetapi flow refund belum ada. Kasir tidak punya jalur resmi untuk membatalkan transaksi yang sudah lunas.
 
@@ -393,7 +393,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 
 **Dampak skema:** tabel `refunds` (`billId`, `paymentId`, `amount`, `category`, `reason`, `restocked`, `approvedBy`, `externalRef`, `createdAt`); kolom agregat `bills.refundedAmount`; status payment/refund.
 
-**Implementasi v1.1:** `/staff/admin/refunds`, `lib/services/refunds.ts`, `refundPaymentAction` (owner-only), laporan neto, expected cash shift, struk bill, audit `bill.refunded`. Refund gateway belum; UI menandai refund manual.
+**Implementasi v1.2:** `/staff/admin/refunds`, `lib/services/refunds.ts`, `refundPaymentAction` (owner-only), laporan neto, expected cash shift, struk bill, audit `bill.refunded`. Refund QRIS gateway otomatis (mock/Midtrans/Xendit), refund saldo member, dan restock opsional. Provider asli butuh kredensial & webhook production.
 
 #### 2. Staff management & venue settings
 **Status:** selesai sebagian (v1.1; invite email & jam buka/tutup belum) · **Prioritas:** P0 · **Dependensi:** Supabase service role / invite flow
@@ -486,7 +486,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 ### 11.2 Fase 2 — Revenue & guest experience
 
 #### 6. Payment gateway QRIS
-**Status:** selesai sebagian (v1.1; refund API gateway belum di UI) · **Prioritas:** P1 · **Dependensi:** #1, kredensial provider
+**Status:** selesai implementasi (v1.2; mock diuji, provider asli butuh kredensial) · **Prioritas:** P1 · **Dependensi:** #1, kredensial provider
 
 **Scope:**
 - Adapter provider (Midtrans/Xendit) dengan interface `createCharge`, `getStatus`, `refund`.
@@ -501,10 +501,10 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Nominal/expiry/refund tervalidasi.
 - Reconciliation report mencocokkan payment gateway vs bill.
 
-**Implementasi v1.1:** `/api/webhooks/payment/gateway`, `payment_intents` + `lib/payments/gateway.ts` (mock/Midtrans/Xendit), dialog QRIS dinamis di kasir, polling status, webhook auto-settlement, env `PAYMENT_GATEWAY`. QRIS dinamis saat ini untuk bill non-split; group split masih manual. Refund gateway adapter sudah ada tetapi belum diaktifkan di UI.
+**Implementasi v1.2:** `/api/webhooks/payment/gateway`, `payment_intents` + `lib/payments/gateway.ts` (mock/Midtrans/Xendit), dialog QRIS dinamis di kasir dan per split group, polling status, webhook auto-settlement, env `PAYMENT_GATEWAY`. Refund QRIS gateway otomatis dipanggil dari flow refund; fallback ref manual jika provider menolak. Provider asli belum diuji tanpa kredensial.
 
 #### 7. Membership & loyalty
-**Status:** selesai sebagian (v1.1; redeem/voucher/deposit belum) · **Prioritas:** P2 · **Dependensi:** #2
+**Status:** selesai (v1.2; poin redeem, voucher, saldo/deposit, tier benefit) · **Prioritas:** P2 · **Dependensi:** #2
 
 **Scope:**
 - Profil member (nama, telepon/email unik, consent).
@@ -521,10 +521,10 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 
 **Dampak skema:** `members`, `member_tiers`, `loyalty_ledger`, `vouchers`, `member_deposits`.
 
-**Implementasi v1.1:** `/staff/admin/members`, MemberDialog di kasir, tier otomatis dari total spend, diskon tier di bill, poin earn idempoten lewat `loyalty_ledger`. Redeem poin, voucher, dan deposit saldo belum.
+**Implementasi v1.2:** `/staff/admin/members`, MemberDialog kasir, tier otomatis, diskon tier, poin earn idempoten. Tukar poin (1 poin = Rp100), voucher single-use, top up/potong saldo (`balance`), refund saldo, opt-out email/WA, dan teks benefit tier. Batas: belum ada expiry poin/auto top-up.
 
 #### 8. Promo engine
-**Status:** selesai sebagian (v1.1; bundle/happy hour/stacking belum) · **Prioritas:** P2 · **Dependensi:** #7
+**Status:** selesai (v1.2; bundle, stacking, happy hour otomatis, kuota per member) · **Prioritas:** P2 · **Dependensi:** #7
 
 **Scope:**
 - Promo code, bundle, minimum spend, diskon per kategori/menu, happy hour otomatis.
@@ -540,10 +540,10 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 
 **Dampak skema:** `promotions`, `promotion_rules`, `promotion_redemptions`.
 
-**Implementasi v1.1:** `/staff/admin/promotions`, PromoDialog di kasir, kode persen/nominal, min spend, max diskon, kuota, masa berlaku, cakupan all/billiard/fnb, member-only. Kuota bertambah saat bill lunas. Bundle/stacking/happy hour otomatis belum.
+**Implementasi v1.2:** `/staff/admin/promotions`, PromoDialog kasir, persen/nominal/bundle, min spend, max diskon, kuota total & per member, masa berlaku, cakupan, member-only, stacking, dan auto-apply happy hour berbasis hari/jam. Diskon stacking disimpan di `bill_promotions`; kuota bertambah saat lunas.
 
 #### 9. E-receipt & notifikasi
-**Status:** selesai sebagian (v1.1; template/opt-out granular belum) · **Prioritas:** P2 · **Dependensi:** #6
+**Status:** selesai (v1.2; template kustom, opt-out channel, cron, reminder reservasi) · **Prioritas:** P2 · **Dependensi:** #6
 
 **Scope:**
 - Outbox notifikasi (WhatsApp Cloud API/email) dengan retry.
@@ -559,7 +559,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 
 **Dampak skema:** `notification_outbox`, `member_contacts`/consent.
 
-**Implementasi v1.1:** `/staff/admin/notifications`, `notification_outbox`, provider log/Resend/WhatsApp Cloud API, retry manual, consent member dihormati. E-receipt/order-ready masuk antrean saat bill lunas/order ready. Template kustom, opt-out per channel, dan pengiriman otomatis via cron belum.
+**Implementasi v1.2:** `/staff/admin/notifications`, `notification_outbox`, provider log/Resend/WhatsApp, retry, consent + opt-out email/WA per member. Template kustom per outlet dengan placeholder. Cron `/api/cron/notifications` (secret) memproses outbox dan reminder reservasi H+1; `vercel.json` menjadwalkan tiap 10 menit.
 
 #### 10. Customer experience lanjutan
 **Status:** selesai sebagian (v1.1; push & feedback belum) · **Prioritas:** P2 · **Dependensi:** #9
@@ -580,7 +580,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 ### 11.3 Fase 3 — Kedalaman operasional
 
 #### 11. Inventory & BOM
-**Status:** selesai sebagian (v1.1; supplier/PO/HPP belum) · **Prioritas:** P2 · **Dependensi:** #2
+**Status:** selesai (v1.2; supplier, PO, HPP, opname massal) · **Prioritas:** P2 · **Dependensi:** #2
 
 **Scope:**
 - Bahan baku, resep per menu, konversi satuan, supplier, purchase order, stock opname.
@@ -597,7 +597,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 **Dampak skema:** `ingredients`, `recipes`, `stock_movements`, `suppliers`, `purchase_orders`, `stock_counts`.
 
 #### 12. Maintenance cue & alat
-**Status:** selesai sebagian (v1.1; blokir meja maintenance belum) · **Prioritas:** P3 · **Dependensi:** #11
+**Status:** selesai (v1.2; termasuk blokir sesi/order/self-order untuk meja maintenance) · **Prioritas:** P3 · **Dependensi:** #11
 
 **Scope:**
 - Inventaris cue/meja/peralatan, jadwal re-tipping, servis, dan log kerusakan.
@@ -612,7 +612,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 **Dampak skema:** `assets`, `maintenance_schedules`, `maintenance_logs`.
 
 #### 13. Kas & shift lanjutan
-**Status:** selesai sebagian (v1.1; transfer antar shift/approval berjenjang belum) · **Prioritas:** P2 · **Dependensi:** #1
+**Status:** selesai sebagian (v1.2; cash drop/petty/transfer/adjustment sudah; approval berjenjang belum) · **Prioritas:** P2 · **Dependensi:** #1
 
 **Scope:**
 - Cash drop, petty cash, transfer kas antar shift, koreksi kas.
@@ -629,7 +629,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 **Dampak skema:** `cash_movements`, `shift_handovers`.
 
 #### 14. Multi-outlet
-**Status:** ditunda (lihat `docs/deferred.md`) · **Prioritas:** P3 · **Dependensi:** #2, arsitektur auth
+**Status:** selesai (v1.2; app-level scoping + outlet switcher; RLS template belum diaktifkan default) · **Prioritas:** P3 · **Dependensi:** #2, arsitektur auth
 
 **Scope:**
 - Tabel `outlets`; `outletId` di seluruh data operasional.
@@ -677,7 +677,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Preview deployment teruji sebelum merge.
 
 #### 17. Offline write queue
-**Status:** ditunda (lihat `docs/deferred.md`) · **Prioritas:** P3 · **Dependensi:** #16
+**Status:** selesai untuk order kasir & customer (IndexedDB + replay idempotent); pembayaran/refund tidak di-queue · **Prioritas:** P3 · **Dependensi:** #16
 
 **Scope:**
 - IndexedDB queue untuk order/payment saat offline.
@@ -693,7 +693,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Tidak ada payment yang “hilang” tanpa jejak.
 
 #### 18. ESC/POS langsung
-**Status:** ditunda (lihat `docs/deferred.md`) · **Prioritas:** P3 · **Dependensi:** print agent lokal
+**Status:** selesai implementasi queue/agent/WebUSB; cetak fisik belum diuji hardware · **Prioritas:** P3 · **Dependensi:** print agent lokal
 
 **Scope:**
 - Print agent lokal (Node) atau WebUSB/Web Bluetooth.
@@ -708,7 +708,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Fallback tetap tersedia.
 
 #### 19. Hardening
-**Status:** selesai sebagian (v1.1; security headers + rate limit; Turnstile/Sentry belum) · **Prioritas:** P1 · **Dependensi:** #15
+**Status:** selesai sebagian (v1.2; security headers + rate limit; Turnstile/Sentry belum) · **Prioritas:** P1 · **Dependensi:** #15
 
 **Scope:**
 - Turnstile pada self-order publik.
@@ -727,7 +727,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 ### 11.5 Fitur lintas fase
 
 #### 20. Denda & penalty engine
-**Status:** selesai sebagian (v1.1; denda manual + rules + waive; otomatis overtime belum) · **Prioritas:** P1 · **Dependensi:** #1 refund, #3 tarif, #4 reservasi, #12 aset
+**Status:** selesai (v1.2; manual + rules + waive + overtime otomatis + no-show deposit forfeit) · **Prioritas:** P1 · **Dependensi:** #1 refund, #3 tarif, #4 reservasi, #12 aset
 
 **Masalah:** belum ada mekanisme denda untuk sesi yang melewati waktu, no-show/pembatalan reservasi, kerusakan meja/cue, atau kehilangan bola/aksesori. Semua masih manual dan tidak tercatat di bill/laporan.
 

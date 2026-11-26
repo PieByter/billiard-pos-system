@@ -11,6 +11,7 @@ import { Icon } from '@/components/ui/icon';
 import { Modal } from '@/components/ui/modal';
 import { EmptyState } from '@/components/ui/stat-card';
 import { cn, formatRp } from '@/lib/format';
+import { enqueueOfflineOrder } from '@/lib/offline/order-queue';
 import type { MenuCategoryView, MenuItemView, TableView } from '@/lib/types';
 
 type CartEntry = { qty: number; note: string };
@@ -117,7 +118,8 @@ export function OrderDialog({
     if (!table || cartLines.length === 0) return;
     setLoading(true);
     setError(null);
-    const result = await placeCashierOrderAction({
+    const idempotencyKey = crypto.randomUUID();
+    const payload = {
       tableId: table.id,
       items: cartLines.map((line) => ({
         menuItemId: line.item.id,
@@ -125,19 +127,65 @@ export function OrderDialog({
         note: line.note || undefined,
       })),
       note: orderNote || undefined,
-    });
-    if (!result.ok) {
-      setError(result.error);
+      idempotencyKey,
+    };
+    const saveOffline = async () => {
+      await enqueueOfflineOrder({
+        tableId: table.id,
+        tableCode: table.code,
+        items: payload.items,
+        note: payload.note,
+        idempotencyKey,
+      });
+      window.dispatchEvent(new CustomEvent('cuetap:offline-queue'));
+      toast.success('Order disimpan offline', {
+        description: `${itemCount} item · ${formatRp(subtotal)} akan dikirim saat online.`,
+      });
       setLoading(false);
+      onClose();
+      onDone?.();
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      try {
+        await saveOffline();
+      } catch (offlineError) {
+        setError(
+          offlineError instanceof Error
+            ? offlineError.message
+            : 'Gagal menyimpan order offline.',
+        );
+        setLoading(false);
+      }
       return;
     }
-    toast.success(`Order ${result.data?.orderNumber ?? ''} dikirim ke KDS`, {
-      description: `${itemCount} item · ${formatRp(subtotal)} ditambahkan ke bill ${table.code}`,
-    });
-    setLoading(false);
-    onClose();
-    onDone?.();
-    router.refresh();
+
+    try {
+      const result = await placeCashierOrderAction(payload);
+      if (!result.ok) {
+        setError(result.error);
+        setLoading(false);
+        return;
+      }
+      toast.success(`Order ${result.data?.orderNumber ?? ''} dikirim ke KDS`, {
+        description: `${itemCount} item · ${formatRp(subtotal)} ditambahkan ke bill ${table.code}`,
+      });
+      setLoading(false);
+      onClose();
+      onDone?.();
+      router.refresh();
+    } catch {
+      try {
+        await saveOffline();
+      } catch (offlineError) {
+        setError(
+          offlineError instanceof Error
+            ? offlineError.message
+            : 'Koneksi terputus dan order gagal disimpan.',
+        );
+        setLoading(false);
+      }
+    }
   }
 
   return (

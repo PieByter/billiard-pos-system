@@ -9,6 +9,12 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/stat-card';
 import { cn, formatClock, formatRp } from '@/lib/format';
 import { DEPOSIT_LABEL, VENUE_TAGLINE } from '@/lib/constants';
+import {
+  enqueueCustomerOrder,
+  listCustomerOrders,
+  removeCustomerOrder,
+  updateCustomerOrder,
+} from '@/lib/offline/customer-queue';
 import type { CustomerData, CustomerOrderView, MenuItemView } from '@/lib/types';
 import { CartSheet, ServiceSheet, TrackerSheet, type CartMap } from './customer-sheets';
 
@@ -127,6 +133,51 @@ export function CustomerApp({ data }: { data: CustomerData }) {
     return () => {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', poll);
+    };
+  }, [refreshOrders]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const sync = async () => {
+      if (typeof navigator === 'undefined' || !navigator.onLine) return;
+      const queued = await listCustomerOrders();
+      if (queued.length === 0) return;
+      let synced = 0;
+      for (const order of queued) {
+        try {
+          const result = await placeCustomerOrderAction({
+            token: order.token,
+            idempotencyKey: order.idempotencyKey,
+            items: order.items,
+            note: order.note,
+          });
+          if (result.ok) {
+            await removeCustomerOrder(order.id);
+            synced += 1;
+          } else {
+            const next = { ...order, attempts: order.attempts + 1, lastError: result.error };
+            if (next.attempts >= 3) {
+              await removeCustomerOrder(order.id);
+            } else {
+              await updateCustomerOrder(next);
+            }
+          }
+        } catch {
+          break;
+        }
+      }
+      if (!cancelled && synced > 0) {
+        await refreshOrders();
+        toast.success(`${synced} pesanan offline terkirim`, {
+          description: 'Kasir akan mengonfirmasi pesananmu.',
+        });
+      }
+    };
+    void sync();
+    window.addEventListener('online', sync);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('online', sync);
     };
   }, [refreshOrders]);
 
@@ -256,7 +307,7 @@ export function CustomerApp({ data }: { data: CustomerData }) {
     setSubmitting(true);
     setCheckoutError(null);
     if (!idempotencyRef.current) idempotencyRef.current = crypto.randomUUID();
-    const result = await placeCustomerOrderAction({
+    const payload = {
       token: data.table.qrToken,
       idempotencyKey: idempotencyRef.current,
       items: cartLines.map((line) => ({
@@ -265,24 +316,65 @@ export function CustomerApp({ data }: { data: CustomerData }) {
         note: line.note || undefined,
       })),
       note: orderNote || null,
-    });
-    if (!result.ok) {
-      setCheckoutError(result.error);
+    };
+    const saveOffline = async () => {
+      await enqueueCustomerOrder({
+        token: payload.token,
+        idempotencyKey: payload.idempotencyKey,
+        items: payload.items,
+        note: payload.note,
+      });
+      idempotencyRef.current = null;
       setSubmitting(false);
+      setCart({});
+      setOrderNote('');
+      setCartOpen(false);
+      toast.success('Pesanan disimpan offline', {
+        description: 'Akan dikirim otomatis saat koneksi kembali.',
+      });
+    };
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      try {
+        await saveOffline();
+      } catch (error) {
+        setCheckoutError(
+          error instanceof Error ? error.message : 'Gagal menyimpan pesanan offline.',
+        );
+        setSubmitting(false);
+      }
       return;
     }
-    idempotencyRef.current = null;
-    setSubmitting(false);
-    setCart({});
-    setOrderNote('');
-    setCartOpen(false);
-    // Ambil status terbaru dulu agar tracker langsung menampilkan order yang baru dibuat,
-    // bukan order lama yang masih tersimpan di state.
-    await refreshOrders();
-    setTrackerOpen(true);
-    toast.success('Pesanan terkirim!', {
-      description: 'Kasir akan mengonfirmasi sebentar lagi. Status bisa dilihat live.',
-    });
+
+    try {
+      const result = await placeCustomerOrderAction(payload);
+      if (!result.ok) {
+        setCheckoutError(result.error);
+        setSubmitting(false);
+        return;
+      }
+      idempotencyRef.current = null;
+      setSubmitting(false);
+      setCart({});
+      setOrderNote('');
+      setCartOpen(false);
+      // Ambil status terbaru dulu agar tracker langsung menampilkan order yang baru dibuat,
+      // bukan order lama yang masih tersimpan di state.
+      await refreshOrders();
+      setTrackerOpen(true);
+      toast.success('Pesanan terkirim!', {
+        description: 'Kasir akan mengonfirmasi sebentar lagi. Status bisa dilihat live.',
+      });
+    } catch {
+      try {
+        await saveOffline();
+      } catch (error) {
+        setCheckoutError(
+          error instanceof Error ? error.message : 'Koneksi terputus dan pesanan gagal disimpan.',
+        );
+        setSubmitting(false);
+      }
+    }
   }
 
   return (

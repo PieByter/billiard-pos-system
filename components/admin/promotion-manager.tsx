@@ -19,6 +19,16 @@ import type { PromotionView, PromotionsAdminData } from '@/lib/types';
 
 type Editor = PromotionView | 'new' | null;
 
+function minutesToTime(minutes: number) {
+  const safe = Math.max(0, Math.min(1440, Math.round(minutes)));
+  return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
+}
+
+function timeToMinutes(value: string) {
+  const [hour, minute] = value.split(':').map(Number);
+  return Math.max(0, Math.min(1439, (hour || 0) * 60 + (minute || 0)));
+}
+
 function toDateTimeLocal(iso: string | null) {
   if (!iso) return '';
   const date = new Date(iso);
@@ -38,7 +48,7 @@ export function PromotionManager({ data }: { data: PromotionsAdminData }) {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [type, setType] = useState<'percent' | 'fixed'>('percent');
+  const [type, setType] = useState<'percent' | 'fixed' | 'bundle'>('percent');
   const [value, setValue] = useState(1000);
   const [minSpend, setMinSpend] = useState(0);
   const [maxDiscount, setMaxDiscount] = useState(0);
@@ -47,6 +57,14 @@ export function PromotionManager({ data }: { data: PromotionsAdminData }) {
   const [validTo, setValidTo] = useState('');
   const [appliesTo, setAppliesTo] = useState<'all' | 'billiard' | 'fnb'>('all');
   const [memberOnly, setMemberOnly] = useState(false);
+  const [stackable, setStackable] = useState(false);
+  const [autoApply, setAutoApply] = useState(false);
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  const [startTime, setStartTime] = useState('00:00');
+  const [endTime, setEndTime] = useState('23:59');
+  const [maxUsesPerMember, setMaxUsesPerMember] = useState(0);
+  const [bundlePrice, setBundlePrice] = useState(0);
+  const [bundleItemIds, setBundleItemIds] = useState<string[]>([]);
   const [active, setActive] = useState(true);
 
   const stats = useMemo(
@@ -72,6 +90,14 @@ export function PromotionManager({ data }: { data: PromotionsAdminData }) {
     setValidTo('');
     setAppliesTo('all');
     setMemberOnly(false);
+    setStackable(false);
+    setAutoApply(false);
+    setDaysOfWeek([1, 2, 3, 4, 5, 6, 7]);
+    setStartTime('00:00');
+    setEndTime('23:59');
+    setMaxUsesPerMember(0);
+    setBundlePrice(0);
+    setBundleItemIds([]);
     setActive(true);
     setError(null);
   }
@@ -90,6 +116,14 @@ export function PromotionManager({ data }: { data: PromotionsAdminData }) {
     setValidTo(toDateTimeLocal(promo.validTo));
     setAppliesTo(promo.appliesTo);
     setMemberOnly(promo.memberOnly);
+    setStackable(promo.stackable);
+    setAutoApply(promo.autoApply);
+    setDaysOfWeek(promo.daysOfWeek);
+    setStartTime(minutesToTime(promo.startMinute));
+    setEndTime(minutesToTime(promo.endMinute === 1440 ? 1439 : promo.endMinute));
+    setMaxUsesPerMember(promo.maxUsesPerMember ?? 0);
+    setBundlePrice(promo.bundlePrice ?? 0);
+    setBundleItemIds(promo.bundleItemIds);
     setActive(promo.active);
     setError(null);
   }
@@ -103,7 +137,7 @@ export function PromotionManager({ data }: { data: PromotionsAdminData }) {
       name,
       description: description || null,
       type,
-      value,
+      value: type === 'bundle' ? bundlePrice : value,
       minSpend,
       maxDiscount: maxDiscount || null,
       maxUses: maxUses || null,
@@ -111,6 +145,14 @@ export function PromotionManager({ data }: { data: PromotionsAdminData }) {
       validTo: validTo ? new Date(validTo).toISOString() : null,
       appliesTo,
       memberOnly,
+      stackable,
+      autoApply,
+      daysOfWeek,
+      startMinute: timeToMinutes(startTime),
+      endMinute: timeToMinutes(endTime),
+      maxUsesPerMember: maxUsesPerMember || null,
+      bundlePrice: type === 'bundle' ? bundlePrice : null,
+      bundleItemIds: type === 'bundle' ? bundleItemIds : [],
       active,
     });
     setSaving(false);
@@ -172,9 +214,13 @@ export function PromotionManager({ data }: { data: PromotionsAdminData }) {
                     <Badge tone={promo.type === 'percent' ? 'cyan' : 'tertiary'}>
                       {promo.type === 'percent'
                         ? `${(promo.value / 100).toFixed(0)}%`
-                        : formatRp(promo.value)}
+                        : promo.type === 'bundle'
+                          ? `Bundle ${formatRp(promo.bundlePrice ?? promo.value)}`
+                          : formatRp(promo.value)}
                     </Badge>
                     {promo.memberOnly ? <Badge tone="paused">Member only</Badge> : null}
+                    {promo.stackable ? <Badge tone="primary">Stackable</Badge> : null}
+                    {promo.autoApply ? <Badge tone="tertiary">Auto happy hour</Badge> : null}
                   </div>
                   <p className="mt-1 text-body-sm font-semibold text-on-surface">{promo.name}</p>
                   <p className="text-[10px] text-on-surface-variant">
@@ -186,7 +232,17 @@ export function PromotionManager({ data }: { data: PromotionsAdminData }) {
                     · min {formatRp(promo.minSpend)}
                     {promo.maxDiscount ? ` · maks ${formatRp(promo.maxDiscount)}` : ''}
                     {promo.maxUses ? ` · ${promo.usesCount}/${promo.maxUses} pakai` : ` · ${promo.usesCount}x`}
+                    {promo.maxUsesPerMember ? ` · maks ${promo.maxUsesPerMember}/member` : ''}
                   </p>
+                  {promo.autoApply ? (
+                    <p className="text-[10px] text-outline">
+                      Window{' '}
+                      {promo.daysOfWeek
+                        .map((day) => ['', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][day])
+                        .join(', ')}{' '}
+                      · {minutesToTime(promo.startMinute)}–{minutesToTime(promo.endMinute)}
+                    </p>
+                  ) : null}
                   <p className="text-[10px] text-outline">
                     {promo.validFrom || promo.validTo
                       ? `${promo.validFrom ? formatDate(promo.validFrom) : '—'} → ${
@@ -259,21 +315,33 @@ export function PromotionManager({ data }: { data: PromotionsAdminData }) {
                 className="mt-1.5"
                 value={type}
                 onChange={(event) => {
-                  const next = event.target.value as 'percent' | 'fixed';
+                  const next = event.target.value as 'percent' | 'fixed' | 'bundle';
                   setType(next);
                   setValue(next === 'percent' ? 1000 : 10_000);
+                  if (next === 'bundle' && bundlePrice <= 0) setBundlePrice(50_000);
                 }}
               >
                 <option value="percent">Persentase</option>
                 <option value="fixed">Nominal</option>
+                <option value="bundle">Bundle menu</option>
               </Select>
             </div>
             <Input
-              label={type === 'percent' ? 'Nilai (bps)' : 'Nominal (Rp)'}
+              label={
+                type === 'percent'
+                  ? 'Nilai (bps)'
+                  : type === 'bundle'
+                    ? 'Harga bundle (Rp)'
+                    : 'Nominal (Rp)'
+              }
               type="number"
               min={1}
-              value={value}
-              onChange={(event) => setValue(Math.max(1, Number(event.target.value) || 1))}
+              value={type === 'bundle' ? bundlePrice : value}
+              onChange={(event) =>
+                type === 'bundle'
+                  ? setBundlePrice(Math.max(1, Number(event.target.value) || 1))
+                  : setValue(Math.max(1, Number(event.target.value) || 1))
+              }
               hint={type === 'percent' ? '1000 = 10%' : undefined}
             />
           </div>
@@ -295,14 +363,24 @@ export function PromotionManager({ data }: { data: PromotionsAdminData }) {
             />
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <Input
-              label="Maks pemakaian"
-              type="number"
-              min={0}
-              value={maxUses}
-              onChange={(event) => setMaxUses(Math.max(0, Number(event.target.value) || 0))}
-              hint="0 = unlimited"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                label="Maks pemakaian"
+                type="number"
+                min={0}
+                value={maxUses}
+                onChange={(event) => setMaxUses(Math.max(0, Number(event.target.value) || 0))}
+                hint="0 = unlimited"
+              />
+              <Input
+                label="Maks / member"
+                type="number"
+                min={0}
+                value={maxUsesPerMember}
+                onChange={(event) => setMaxUsesPerMember(Math.max(0, Number(event.target.value) || 0))}
+                hint="0 = unlimited"
+              />
+            </div>
             <div>
               <Label>Cakupan</Label>
               <Select
@@ -330,7 +408,101 @@ export function PromotionManager({ data }: { data: PromotionsAdminData }) {
               onChange={(event) => setValidTo(event.target.value)}
             />
           </div>
-          <Switch checked={memberOnly} onChange={setMemberOnly} label="Hanya member" />
+          <div className="grid grid-cols-2 gap-2">
+            <Switch checked={memberOnly} onChange={setMemberOnly} label="Hanya member" />
+            <Switch checked={stackable} onChange={setStackable} label="Bisa digabung" />
+          </div>
+          <Switch
+            checked={autoApply}
+            onChange={setAutoApply}
+            label="Auto apply (happy hour)"
+            description="Promo dipasang otomatis saat bill dihitung dalam window waktu."
+          />
+          {autoApply ? (
+            <div className="flex flex-col gap-2 rounded-lg border border-outline-variant/25 bg-surface-container p-2.5">
+              <div className="flex flex-wrap gap-1">
+                {[
+                  [1, 'Sen'],
+                  [2, 'Sel'],
+                  [3, 'Rab'],
+                  [4, 'Kam'],
+                  [5, 'Jum'],
+                  [6, 'Sab'],
+                  [7, 'Min'],
+                ].map(([value, label]) => {
+                  const day = Number(value);
+                  const selected = daysOfWeek.includes(day);
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() =>
+                        setDaysOfWeek((current) =>
+                          selected
+                            ? current.filter((entry) => entry !== day)
+                            : [...current, day].sort((a, b) => a - b),
+                        )
+                      }
+                      className={
+                        selected
+                          ? 'rounded-md bg-primary/15 px-2 py-1 text-[10px] font-bold text-primary'
+                          : 'rounded-md border border-outline-variant/30 px-2 py-1 text-[10px] text-on-surface-variant'
+                      }
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  label="Mulai"
+                  type="time"
+                  value={startTime}
+                  onChange={(event) => setStartTime(event.target.value)}
+                />
+                <Input
+                  label="Selesai"
+                  type="time"
+                  value={endTime}
+                  onChange={(event) => setEndTime(event.target.value)}
+                />
+              </div>
+            </div>
+          ) : null}
+          {type === 'bundle' ? (
+            <div className="rounded-lg border border-outline-variant/25 bg-surface-container p-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-outline">
+                Menu bundle ({bundleItemIds.length} dipilih)
+              </p>
+              <div className="mt-1 grid max-h-40 grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2">
+                {data.menuItems.map((item) => {
+                  const selected = bundleItemIds.includes(item.id);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() =>
+                        setBundleItemIds((current) =>
+                          selected
+                            ? current.filter((id) => id !== item.id)
+                            : [...current, item.id],
+                        )
+                      }
+                      className={
+                        selected
+                          ? 'flex items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-left text-[10px] text-primary'
+                          : 'flex items-center justify-between gap-2 rounded-md border border-outline-variant/25 px-2 py-1 text-left text-[10px] text-on-surface-variant'
+                      }
+                    >
+                      <span className="truncate">{item.name}</span>
+                      <span className="numeric shrink-0">{formatRp(item.price)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           <Switch checked={active} onChange={setActive} label="Promo aktif" />
           <FormError message={error} />
         </div>

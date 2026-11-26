@@ -61,8 +61,20 @@ export function BillPanel(props: BillPanelProps) {
               <span className="text-label-badge font-bold uppercase tracking-[0.12em] text-primary">
                 Meja {table.code}
               </span>
-              <Badge tone={table.state === 'cleaning' ? 'error' : 'outline'}>
-                {table.state === 'cleaning' ? 'Cleaning' : 'Available'}
+              <Badge
+                tone={
+                  table.state === 'cleaning'
+                    ? 'error'
+                    : table.state === 'maintenance'
+                      ? 'paused'
+                      : 'outline'
+                }
+              >
+                {table.state === 'cleaning'
+                  ? 'Cleaning'
+                  : table.state === 'maintenance'
+                    ? 'Maintenance'
+                    : 'Available'}
               </Badge>
             </div>
             <h2 className="mt-1 text-headline-md font-extrabold text-on-surface">
@@ -106,7 +118,17 @@ export function BillPanel(props: BillPanelProps) {
         ) : null}
 
         <div className="mt-4 flex flex-col gap-2">
-          {table.state === 'cleaning' ? (
+          {table.state === 'maintenance' ? (
+            <div className="rounded-lg border border-tertiary/25 bg-tertiary/[0.06] p-3">
+              <div className="flex items-center gap-2 text-body-sm font-semibold text-tertiary">
+                <Icon name="handyman" className="text-[18px]" />
+                Meja sedang maintenance
+              </div>
+              <p className="mt-1 text-[11px] text-on-surface-variant">
+                {table.maintenanceNote || 'Selesaikan maintenance dari Admin → Meja & QR.'}
+              </p>
+            </div>
+          ) : table.state === 'cleaning' ? (
             <Button variant="primary" size="lg" onClick={props.onReady} disabled={props.busy}>
               <Icon name="check_circle" className="text-[18px]" />
               Tandai Siap Pakai
@@ -408,6 +430,20 @@ function ActiveBillPanel({ table, ...props }: BillPanelProps & { table: TableVie
             className="mt-1"
             label={`Promo ${bill.promotionCode ?? ''}`}
             value={`- ${formatRp(bill.promoDiscountAmount)}`}
+          />
+        ) : null}
+        {bill.pointsDiscountAmount > 0 ? (
+          <InfoRow
+            className="mt-1"
+            label={`Poin ${bill.pointsRedeemed}`}
+            value={`- ${formatRp(bill.pointsDiscountAmount)}`}
+          />
+        ) : null}
+        {bill.voucherDiscountAmount > 0 ? (
+          <InfoRow
+            className="mt-1"
+            label={`Voucher ${bill.voucherCode ?? ''}`}
+            value={`- ${formatRp(bill.voucherDiscountAmount)}`}
           />
         ) : null}
         {bill.penaltyAmount > 0 ? (

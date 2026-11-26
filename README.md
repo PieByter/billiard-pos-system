@@ -27,16 +27,17 @@ worker).
 | `/staff/admin/menu` | CRUD menu, harga, stok, station, best seller, availability |
 | `/staff/admin/tables` | CRUD meja, tarif, flag self-order, QR generation & rotasi token |
 | `/staff/admin/schedules` | Jadwal tarif peak/off-peak per meja: hari, jam, prioritas, preview tarif |
-| `/staff/admin/inventory` | Bahan, resep/BOM, stok, stock movement, low-stock |
+| `/staff/admin/inventory` | Bahan/resep, supplier, PO, HPP per menu, stock opname, low-stock |
 | `/staff/admin/maintenance` | Aset cue/meja/peralatan, log servis, biaya, jatuh tempo |
-| `/staff/admin/penalties` | Aturan denda + riwayat + waive owner |
-| `/staff/admin/members` | Member & tier: profil, poin, total spend, diskon tier otomatis |
-| `/staff/admin/promotions` | Promo code: persentase/nominal, min spend, kuota, masa berlaku, member-only |
-| `/staff/admin/notifications` | Outbox e-receipt/order-ready, status kirim, retry, provider email/WhatsApp/log |
-| `/staff/admin/reports` | Omzet 7/14/30 hari, billiard vs F&B, metode bayar, top menu & meja, refund, export CSV |
-| `/staff/admin/refunds` | Refund pembayaran bill lunas (partial/full), kategori refund, restock stok, riwayat refund |
+| `/staff/admin/penalties` | Aturan denda + riwayat + waive + overtime otomatis |
+| `/staff/admin/members` | Member & tier, poin/voucher/saldo, opt-out channel |
+| `/staff/admin/promotions` | Promo persen/nominal/bundle, stacking, happy hour, kuota per member |
+| `/staff/admin/notifications` | Outbox e-receipt/order-ready, template, cron, retry, opt-out |
+| `/staff/admin/printing` | Print queue ESC/POS, retry, test print, panduan agent/WebUSB |
+| `/staff/admin/reports` | Omzet per outlet 7/14/30 hari, billiard vs F&B, metode bayar, top menu & meja, refund, export CSV |
+| `/staff/admin/refunds` | Refund pembayaran bill lunas (partial/full), gateway/saldo, restock, riwayat |
 | `/staff/admin/staff` | CRUD staff, role, aktif/nonaktif, reset akses, provisioning Supabase Auth |
-| `/staff/admin/settings` | Pengaturan venue, PB1, service charge, footer struk, warning menit |
+| `/staff/admin/settings` | Pengaturan venue/outlet, PB1, service charge, footer struk, warning menit |
 | `/print/*` | Struk bill 80mm, tiket kitchen 80mm, X/Z report shift, kartu QR A4, struk split group |
 
 ### Layar tamu
@@ -62,16 +63,26 @@ worker).
 - **Promo engine**: kode promo persentase/nominal, min spend, kuota, masa berlaku, cakupan billiard/F&B, member-only.
 - **E-receipt/outbox**: struk digital ke member (email/WhatsApp/log), retry antrean, tanpa memblokir kasir.
 - **Customer experience**: favorit menu, reorder, ETA status, tracker lebih kaya.
-- **Inventory & BOM**: bahan, resep per menu, auto-deduct saat order, stock movement append-only.
-- **Maintenance aset**: cue/meja/peralatan, log servis, biaya, dan jatuh tempo.
+- **Inventory & BOM**: bahan, resep, auto-deduct, supplier, purchase order, HPP per menu, stock opname.
+- **Maintenance aset**: cue/meja/peralatan, log servis, biaya, jatuh tempo, blokir meja maintenance.
 - **Kas & shift lanjutan**: cash drop, petty cash, transfer/koreksi kas, expected cash otomatis.
-- **Denda manual**: kerusakan/kehilangan/overtime, approval owner, waive dengan alasan.
+- **Denda otomatis**: overtime berbasis target durasi + grace, deposit no-show forfeit, denda manual, waive.
+- **Membership lanjutan**: tukar poin, voucher, saldo/deposit, tier benefit, opt-out channel.
+- **Promo lanjutan**: bundle, stacking, happy hour otomatis, kuota per member.
+- **Multi-outlet**: outlet switcher, scoping meja/menu/shift/laporan, template RLS di docs.
+- **Offline write queue**: order kasir & customer di IndexedDB + replay idempotent.
+- **ESC/POS & print agent**: print queue, retry, agent lokal, tombol WebUSB; hardware belum diuji.
+- **Refund gateway & QRIS split**: refund QRIS otomatis (mock/real) dan QRIS per split group.
+- **Notifikasi lanjutan**: template kustom, opt-out email/WA, cron outbox + reminder reservasi.
 - **CI & hardening**: GitHub Actions + security headers.
 - **Audit log append-only** untuk start/stop sesi, pause, order, void, diskon, refund, staff, settings, shift, rotasi QR, dll.
 - **Role guard server-side**: owner / cashier / kitchen. Admin hanya owner; staff nonaktif langsung ditolak.
 - **PWA**: installable, cache menu yang pernah dibuka, halaman `/offline`, print browser 80mm.
 - **Realtime**: Supabase Postgres Changes → `router.refresh()` bila dikonfigurasi, dengan polling
   fallback (5s KDS, 10s kasir, 8s customer) yang selalu aktif.
+
+Detail implementasi batch roadmap #11–#20, konfigurasi print agent/cron, dan batasannya ada di
+**`docs/advanced-features.md`**.
 
 ---
 
@@ -248,7 +259,8 @@ XENDIT_CALLBACK_TOKEN=...
 - **xendit**: `POST /qr_codes`, callback token header.
 - Bill yang sudah punya payment intent pending akan membuat intent lama `cancelled` saat QR baru dibuat.
 - Settlement webhook menutup bill otomatis + meja cleaning.
-- Refund gateway belum otomatis; refund manual tetap lewat Admin → Refund.
+- QRIS gateway juga tersedia per split group; group lain bisa dibayar tunai/EDC.
+- Refund QRIS gateway otomatis memanggil API provider (mock di demo); jika provider menolak, refund tidak disimpan.
 
 Contoh generate signature:
 ```js
@@ -355,24 +367,20 @@ public/                         # manifest, sw.js, icons
 | Auth | Supabase Auth (production). Mode demo lokal pakai cookie HMAC + bcrypt hash di `profiles`. |
 | DB lokal | PGlite otomatis saat `DATABASE_URL` kosong; production wajib Supabase. |
 | Realtime | Postgres Changes + polling fallback. Tidak ada policy `anon`. |
-| Cetak | `window.print()` 80mm (Chrome/Edge). Tidak ada ESC/POS langsung karena Vercel tidak bisa menjangkau printer LAN. |
+| Cetak | `window.print()` 80mm + print queue ESC/POS. Agent lokal/WebUSB mengambil job; hardware belum diuji. |
 | QRIS | Manual-confirm di kasir + webhook gateway opsional. Tidak memaksa bayar di muka. |
 | Tarif peak/off-peak | Model tarif per meja. Slot jam dapat dibuat sebagai rate terpisah dan di-assign ke meja; belum ada auto-switch tarif di tengah sesi (snapshot rate). |
-| Split bill | Per metode bayar dan per item/sesi (group pembayaran parsial). |
-| Stock | Opsional per menu (`stock = null` = tak dilacak). |
+| Split bill | Per metode bayar dan per item/sesi, termasuk QRIS gateway per group. |
+| Stock | Opsional per menu (`stock = null` = tak dilacak) + bahan/resep/PO/opname. |
+| Multi-outlet | `outlet_id` di seluruh tabel; scoping server-side + outlet switcher. RLS template belum diaktifkan default. |
+| Offline | Order kasir & customer queued di IndexedDB; pembayaran/refund tidak di-queue. |
 
-### Belum termasuk v1 (roadmap)
-Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (20 item; refund manual, staff/settings, jadwal tarif, reservasi, split bill, QRIS dinamis, member, promo, notifikasi, dan customer experience sudah ada). Ringkasannya:
+### Status roadmap #11–#20
+Implementasi dan batasan detail ada di **`docs/advanced-features.md`**. Sisa pekerjaan yang benar-benar membutuhkan hardware/kredensial/lingkungan eksternal ada di **`docs/deferred.md`**.
 
-Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi eksternal, bukan karena terlewat:
-
-- **QRIS refund otomatis.** Create-charge + auto-settlement sudah ada; refund manual tersedia di Admin → Refund. Pemanggilan refund API gateway belum diaktifkan di UI.
-- **Denda & penalty engine.** Overtime sesi, no-show reservasi, kerusakan/kehilangan alat, dan denda manual belum ada aturan, approval, atau pencatatan di bill.
-- **Offline write queue.** PWA menyimpan menu read-only; order/pembayaran tetap butuh jaringan (sesuai PRD v1).
-- **ESC/POS langsung / print agent.** Cetak memakai `window.print()` 80mm; printer LAN perlu driver di komputer kasir.
-- **Cloudflare Turnstile.** Self-order sudah dilindungi status pending + rate limit 5 order/menit per meja; Turnstile bisa ditambah jika spam QR terbukti jadi masalah.
-- **Multi-outlet, offline write queue, ESC/POS.** Detail alasan dan rencana ada di **`docs/deferred.md`**.
-- **CI & hardening dasar** sudah ada; Sentry/Turnstile/audit filtering lanjutan belum.
+- **Selesai:** multi-outlet, offline queue order, print queue + agent + WebUSB, refund gateway, QRIS split, membership poin/voucher/saldo, promo bundle/stacking/happy hour, supplier/PO/HPP/opname, denda overtime/no-show, blokir meja maintenance, template notifikasi + cron.
+- **Butuh verifikasi eksternal:** cetak fisik ESC/POS, Midtrans/Xendit/Resend/WhatsApp asli, deploy Supabase/Vercel.
+- **Belum:** Turnstile, Sentry, web push, E2E Playwright, approval transfer kas antar shift.
 
 ---
 
@@ -382,7 +390,7 @@ Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi e
 2. Chrome/Edge → Print → pilih printer thermal → paper **80mm** → margin **None** →
    matikan “Headers and footers”.
 3. Ukuran kertas otomatis dari `@page { size: 80mm auto; }`.
-4. Untuk printer LAN: install driver printer di komputer kasir; Vercel hanya mengirim HTML.
+4. Untuk printer LAN/thermal: gunakan **Admin → Printer** + print agent/WebUSB, atau install driver dan pakai `window.print()`.
 5. QR meja: Admin → Meja & QR → **Cetak QR** (A4, 2 kartu/halaman).
 
 ---
@@ -394,16 +402,17 @@ Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi e
   `npm run icons`.
 - Service worker hanya aktif di production (`npm run build && npm start`), bukan `next dev`.
 - Cache: app shell, halaman yang pernah dibuka, aset statis. Menu customer yang pernah dibuka bisa
-  dibaca offline; order/pembayaran tetap butuh jaringan.
+  dibaca offline.
+- Order kasir dan self-order customer masuk IndexedDB saat offline dan dikirim ulang dengan
+  idempotency key saat online. Pembayaran/refund tetap butuh jaringan.
 - Untuk update versi cache, ubah konstanta `VERSION` di `public/sw.js`.
-- Offline SOP: catat order manual, input saat koneksi kembali. Tidak ada offline write queue di v1
-  (sesuai PRD).
+- Detail konflik/replay: `docs/advanced-features.md` §2.
 
 ---
 
 ## 8. QA checklist sebelum go-live
 
-- [ ] `npm run typecheck && npm test && npm run build`.
+- [ ] `npm run typecheck && npm test && npm run test:integration && npm run build`.
 - [ ] Login owner/kasir/kitchen; role guard: kitchen tidak bisa buka admin, cashier tidak bisa buka
       admin.
 - [ ] Start sesi billiard → pause → resume → stop → bayar cash/QRIS/EDC/split.
@@ -426,16 +435,28 @@ Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi e
 - [ ] Split: item tidak bisa dialokasikan dua kali; total group = total bill; struk per group.
 - [ ] QRIS dinamis (mock): buat QR → simulasi bayar → bill lunas + meja cleaning.
 - [ ] QRIS gateway Midtrans/Xendit: webhook signature/callback token valid; nominal salah ditolak; duplikat idempoten.
+- [ ] QRIS per split group: bayar satu group via QRIS, group lain cash → bill lunas setelah semua group.
 - [ ] Member: attach ke bill → diskon tier muncul; bayar → poin & total spend bertambah.
+- [ ] Member: tukar poin, pakai voucher, top up saldo, bayar dengan saldo, void → poin/voucher kembali.
 - [ ] Promo: kode valid diterapkan; min spend/kuota/expired ditolak; bill lunas → kuota promo bertambah.
 - [ ] Promo member-only ditolak untuk bill tanpa member.
+- [ ] Promo stackable bisa digabung; non-stackable menolak/mengganti; bundle & happy hour otomatis benar.
 - [ ] E-receipt: bill member lunas → masuk outbox; proses antrean → status sent (log/email/WA).
 - [ ] Notifikasi order ready masuk outbox saat order ready dan bill punya member berkontak.
+- [ ] Template notifikasi kustom tersimpan; opt-out email/WA dihormati; cron reminder reservasi membuat 1 pesan.
 - [ ] Customer: tandai favorit, filter favorit, reorder dari tracker, ETA status tampil.
 - [ ] Inventory: resep menu → order memotong bahan; reject/void mengembalikan bahan; low-stock tampil.
+- [ ] Supplier → PO draft → pesan → terima: stok naik, harga modal update, HPP berubah.
+- [ ] Stock opname massal: selisih tercatat, stok sesuai hitung fisik.
 - [ ] Maintenance: tambah aset, log servis, biaya, dan next due tampil.
+- [ ] Maintenance meja: set maintenance → start sesi/self-order ditolak → selesai → available.
 - [ ] Kas: cash drop/petty cash mengubah expected cash; tutup shift menghitung movement.
 - [ ] Denda: tambah denda ke bill, total naik, audit tercatat; waive owner mengembalikan total.
+- [ ] Denda overtime: sesi target + grace terlampaui → denda otomatis; no-show deposit forfeit tercatat.
+- [ ] Multi-outlet: buat outlet, tambah meja/menu, switch outlet, pastikan data & laporan tidak bercampur.
+- [ ] Offline queue: matikan network → order tersimpan lokal → online → order terkirim sekali (idempotent).
+- [ ] Print queue: transaksi membuat job; agent claim/complete; retry job gagal; WebUSB/test print.
+- [ ] Security headers tampil; `/api/cron/notifications` menolak tanpa secret di production.
 - [ ] Tutup shift dengan bill open (harus ditolak); setelah semua bill lunas → Z-report.
 - [ ] Webhook payment: signature salah 401, dobel 200 idempoten, nominal salah 400.
 - [ ] QR: copy link, buka incognito, rotate token → link lama 404.

@@ -65,7 +65,11 @@ export function useLiveBillTotals(bill: BillView) {
   const totals = computeBillTotals({
     subtotal: sessionSubtotal + bill.ordersSubtotal,
     discountAmount:
-      bill.discountAmount + bill.memberDiscountAmount + bill.promoDiscountAmount,
+      bill.discountAmount +
+      bill.memberDiscountAmount +
+      bill.promoDiscountAmount +
+      bill.pointsDiscountAmount +
+      bill.voucherDiscountAmount,
     taxRateBps: bill.taxRateBps,
     serviceRateBps: bill.serviceRateBps,
   });

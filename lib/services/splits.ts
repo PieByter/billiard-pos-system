@@ -14,9 +14,10 @@ import { AppError } from '@/lib/errors';
 import { allocateSplitTotals, computeSessionAmountFromSeconds, billableElapsedSeconds } from '@/lib/billing';
 import { audit } from './audit';
 import { recalcBillTotals } from './bill';
-import { awardMembershipForBill } from './membership';
+import { awardMembershipForBill, consumeMemberBalance } from './membership';
 import { consumePromotionForBill } from './promotions';
 import { enqueueReceiptForBill } from './notifications';
+import { enqueueBillPrintJob } from './printing';
 
 export type SplitGroupInput = {
   label: string;
@@ -24,7 +25,7 @@ export type SplitGroupInput = {
   sessionIds: string[];
 };
 
-const VALID_METHODS = new Set(['cash', 'qris', 'transfer', 'edc']);
+const VALID_METHODS = new Set(['cash', 'qris', 'transfer', 'edc', 'balance']);
 
 function normalizePayments(input: Array<{ method: string; amount: number; tendered?: number }>) {
   return input
@@ -207,6 +208,7 @@ export async function createBillSplits(
       const [split] = await tx
         .insert(billSplits)
         .values({
+          outletId: updatedBill.outletId,
           billId,
           label: group.label,
           subtotal: totals.subtotal,
@@ -221,6 +223,7 @@ export async function createBillSplits(
 
       const itemValues = [
         ...group.itemIds.map((itemId) => ({
+          outletId: updatedBill.outletId,
           splitId: split.id,
           itemType: 'order_item' as const,
           orderItemId: itemId,
@@ -229,6 +232,7 @@ export async function createBillSplits(
           createdAt: now,
         })),
         ...group.sessionIds.map((sessionId) => ({
+          outletId: updatedBill.outletId,
           splitId: split.id,
           itemType: 'session' as const,
           orderItemId: null,
@@ -334,11 +338,19 @@ export async function payBillSplit(
       );
     }
 
+    const balanceAmount = paymentRows
+      .filter((payment) => payment.method === 'balance')
+      .reduce((sum, payment) => sum + payment.amount, 0);
+    if (balanceAmount > 0) {
+      await consumeMemberBalance(tx, bill, balanceAmount, staffId, now);
+    }
+
     await tx.insert(payments).values(
       paymentRows.map((payment) => ({
+        outletId: bill.outletId,
         billId: bill.id,
         billSplitId: split.id,
-        method: payment.method as 'cash' | 'qris' | 'transfer' | 'edc',
+        method: payment.method as 'cash' | 'qris' | 'transfer' | 'edc' | 'balance',
         amount: payment.amount,
         tendered: payment.tendered ?? null,
         receivedBy: staffId,
@@ -368,6 +380,7 @@ export async function payBillSplit(
       await awardMembershipForBill(tx, bill.id, staffId);
       await consumePromotionForBill(tx, bill.id, staffId);
       await enqueueReceiptForBill(tx, bill.id);
+      await enqueueBillPrintJob(tx, bill.id, { type: 'split', createdBy: staffId });
     }
 
     const cashTendered = paymentRows.reduce(

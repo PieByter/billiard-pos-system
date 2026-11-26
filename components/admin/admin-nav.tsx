@@ -92,6 +92,13 @@ const ADMIN_TABS = [
     roles: ['owner'] as ProfileRole[],
   },
   {
+    href: '/staff/admin/printing',
+    label: 'Printer',
+    short: 'Print',
+    icon: 'print',
+    roles: ['owner'] as ProfileRole[],
+  },
+  {
     href: '/staff/admin/staff',
     label: 'Staff',
     short: 'Staff',

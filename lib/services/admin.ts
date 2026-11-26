@@ -1,13 +1,16 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { getDb, dbNow } from '@/lib/db';
 import {
   billiardRates,
+  billiardSessions,
+  bills,
   menuCategories,
   menuItems,
   venueTables,
 } from '@/lib/db/schema';
 import { AppError, isUniqueViolation } from '@/lib/errors';
 import { randomToken } from '@/lib/ids';
+import { getActiveOutletId } from '@/lib/outlet';
 import { audit } from './audit';
 
 export type RateInput = {
@@ -27,6 +30,7 @@ export async function saveRate(staffId: string, input: RateInput) {
   if (input.pricePerHour < 0 || input.minMinutes <= 0 || input.incrementMinutes <= 0) {
     throw new AppError('INVALID_RATE', 'Tarif, minimal durasi, dan increment harus valid.');
   }
+  const outletId = await getActiveOutletId();
 
   const db = await getDb();
   return db.transaction(async (tx) => {
@@ -43,7 +47,7 @@ export async function saveRate(staffId: string, input: RateInput) {
           active: input.active ?? true,
           ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
         })
-        .where(eq(billiardRates.id, input.id))
+        .where(and(eq(billiardRates.id, input.id), eq(billiardRates.outletId, outletId)))
         .returning();
       if (!updated) throw new AppError('RATE_NOT_FOUND', 'Tarif tidak ditemukan.');
       await audit(tx, {
@@ -60,6 +64,7 @@ export async function saveRate(staffId: string, input: RateInput) {
     const [created] = await tx
       .insert(billiardRates)
       .values({
+        outletId,
         name,
         description: input.description?.trim() || null,
         pricePerHour: input.pricePerHour,
@@ -129,14 +134,20 @@ export async function saveMenuItem(staffId: string, input: MenuItemInput) {
   if (input.stock !== null && input.stock < 0) {
     throw new AppError('INVALID_STOCK', 'Stok tidak boleh negatif.');
   }
+  const outletId = await getActiveOutletId();
 
   const db = await getDb();
   return db.transaction(async (tx) => {
     const now = await dbNow(tx);
     const [category] = await tx
-      .select({ id: menuCategories.id })
+      .select({ id: menuCategories.id, outletId: menuCategories.outletId })
       .from(menuCategories)
-      .where(eq(menuCategories.id, input.categoryId))
+      .where(
+        and(
+          eq(menuCategories.id, input.categoryId),
+          eq(menuCategories.outletId, outletId),
+        ),
+      )
       .limit(1);
     if (!category) throw new AppError('CATEGORY_NOT_FOUND', 'Kategori tidak ditemukan.');
 
@@ -156,7 +167,7 @@ export async function saveMenuItem(staffId: string, input: MenuItemInput) {
           updatedAt: now,
           ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
         })
-        .where(eq(menuItems.id, input.id))
+        .where(and(eq(menuItems.id, input.id), eq(menuItems.outletId, outletId)))
         .returning();
       if (!updated) throw new AppError('ITEM_NOT_FOUND', 'Menu tidak ditemukan.');
       await audit(tx, {
@@ -173,6 +184,7 @@ export async function saveMenuItem(staffId: string, input: MenuItemInput) {
     const [created] = await tx
       .insert(menuItems)
       .values({
+        outletId,
         categoryId: input.categoryId,
         name,
         description: input.description?.trim() ?? '',
@@ -268,11 +280,22 @@ export async function saveTable(staffId: string, input: TableInput) {
   if (input.kind === 'billiard' && !input.rateId) {
     throw new AppError('RATE_REQUIRED', 'Meja billiard wajib punya tarif.');
   }
+  const outletId = await getActiveOutletId();
 
   const db = await getDb();
   try {
     return await db.transaction(async (tx) => {
       const now = await dbNow(tx);
+      if (input.rateId) {
+        const [rate] = await tx
+          .select({ id: billiardRates.id })
+          .from(billiardRates)
+          .where(
+            and(eq(billiardRates.id, input.rateId), eq(billiardRates.outletId, outletId)),
+          )
+          .limit(1);
+        if (!rate) throw new AppError('RATE_NOT_FOUND', 'Tarif tidak ditemukan di outlet ini.');
+      }
       if (input.id) {
         const [updated] = await tx
           .update(venueTables)
@@ -285,7 +308,7 @@ export async function saveTable(staffId: string, input: TableInput) {
             rateId: input.kind === 'billiard' ? input.rateId : null,
             ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
           })
-          .where(eq(venueTables.id, input.id))
+          .where(and(eq(venueTables.id, input.id), eq(venueTables.outletId, outletId)))
           .returning();
         if (!updated) throw new AppError('TABLE_NOT_FOUND', 'Meja tidak ditemukan.');
         await audit(tx, {
@@ -302,6 +325,7 @@ export async function saveTable(staffId: string, input: TableInput) {
       const [created] = await tx
         .insert(venueTables)
         .values({
+          outletId,
           code,
           kind: input.kind,
           zone: input.zone.trim(),
@@ -355,6 +379,58 @@ export async function rotateTableQr(staffId: string, tableId: string) {
       at: now,
     });
     return { qrToken: updated.qrToken };
+  });
+}
+
+export async function setTableMaintenance(
+  staffId: string,
+  tableId: string,
+  active: boolean,
+  note?: string | null,
+) {
+  const db = await getDb();
+  return db.transaction(async (tx) => {
+    const now = await dbNow(tx);
+    const [table] = await tx
+      .select()
+      .from(venueTables)
+      .where(eq(venueTables.id, tableId))
+      .limit(1);
+    if (!table) throw new AppError('TABLE_NOT_FOUND', 'Meja tidak ditemukan.');
+    if (active) {
+      const [openBill] = await tx
+        .select({ id: bills.id })
+        .from(bills)
+        .where(and(eq(bills.tableId, tableId), eq(bills.status, 'open')))
+        .limit(1);
+      if (openBill) {
+        throw new AppError('TABLE_OCCUPIED', 'Tutup bill meja sebelum set maintenance.');
+      }
+      const [session] = await tx
+        .select({ id: billiardSessions.id })
+        .from(billiardSessions)
+        .where(
+          and(eq(billiardSessions.tableId, tableId), ne(billiardSessions.status, 'finished')),
+        )
+        .limit(1);
+      if (session) throw new AppError('TABLE_OCCUPIED', 'Sesi billiard masih aktif.');
+    }
+    await tx
+      .update(venueTables)
+      .set({
+        maintenanceAt: active ? now : null,
+        maintenanceNote: active ? note?.trim().slice(0, 200) || 'Perawatan meja' : null,
+      })
+      .where(eq(venueTables.id, tableId));
+    await audit(tx, {
+      staffId,
+      action: active ? 'table.maintenance_started' : 'table.maintenance_finished',
+      entityType: 'venue_table',
+      entityId: tableId,
+      detail: { code: table.code, note: note?.trim() || null },
+      at: now,
+    });
+    return { active };
   });
 }
 

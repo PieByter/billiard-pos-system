@@ -10,6 +10,7 @@ import {
   saveMenuItem,
   saveRate,
   saveTable,
+  setTableMaintenance,
   setTableSelfOrder,
   toggleMenuItem,
   toggleRate,
@@ -284,6 +285,27 @@ export async function rotateTableQrAction(
   return runAction(async () => {
     const staff = await requireStaffAction(['owner']);
     const result = await rotateTableQr(staff.id, tableId);
+    revalidateOps();
+    return result;
+  });
+}
+
+export async function setTableMaintenanceAction(
+  tableId: string,
+  active: boolean,
+  note?: string | null,
+): Promise<ActionResult<{ active: boolean }>> {
+  return runAction(async () => {
+    const staff = await requireStaffAction(['owner']);
+    const data = parseOrThrow(
+      z.object({
+        tableId: z.string().uuid(),
+        active: z.boolean(),
+        note: z.string().max(200).optional().nullable(),
+      }),
+      { tableId, active, note },
+    );
+    const result = await setTableMaintenance(staff.id, data.tableId, data.active, data.note);
     revalidateOps();
     return result;
   });

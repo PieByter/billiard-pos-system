@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   approveOrderAction,
+  placeCashierOrderAction,
   rejectOrderAction,
   resolveServiceRequestAction,
 } from '@/app/actions/orders';
@@ -45,6 +46,12 @@ import type { CashierData, PayMethod, TableView } from '@/lib/types';
 import type { ProfileRole } from '@/lib/db/schema';
 import { LiveClock } from '@/components/live/live';
 import { useRealtimeRefresh } from '@/components/realtime/use-realtime-refresh';
+import {
+  countOfflineOrders,
+  listOfflineOrders,
+  removeOfflineOrder,
+  updateOfflineOrder,
+} from '@/lib/offline/order-queue';
 
 type Filter = 'all' | 'billiard' | 'cafe' | 'attention';
 
@@ -92,6 +99,8 @@ export function CashierBoard({
   const [rejectOrder, setRejectOrder] = useState<{ id: string; number: string } | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [mobileBillOpen, setMobileBillOpen] = useState(false);
+  const [offlineCount, setOfflineCount] = useState(0);
+  const [syncingOffline, setSyncingOffline] = useState(false);
 
   useRealtimeRefresh([
     'bills',
@@ -101,6 +110,81 @@ export function CashierBoard({
     'service_requests',
     'venue_tables',
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const sync = async () => {
+      if (typeof navigator === 'undefined' || !navigator.onLine) return;
+      const rows = await listOfflineOrders();
+      if (cancelled || rows.length === 0) {
+        if (!cancelled) setOfflineCount(rows.length);
+        return;
+      }
+      setSyncingOffline(true);
+      let synced = 0;
+      let failed = 0;
+      for (const order of rows) {
+        try {
+          const result = await placeCashierOrderAction({
+            tableId: order.tableId,
+            items: order.items,
+            note: order.note,
+            idempotencyKey: order.idempotencyKey,
+          });
+          if (result.ok) {
+            await removeOfflineOrder(order.id);
+            synced += 1;
+          } else {
+            failed += 1;
+            const next = {
+              ...order,
+              attempts: order.attempts + 1,
+              lastError: result.error,
+            };
+            if (next.attempts >= 3) {
+              await removeOfflineOrder(order.id);
+              toast.error(`Order offline meja ${order.tableCode} gagal`, {
+                description: result.error,
+              });
+            } else {
+              await updateOfflineOrder(next);
+            }
+          }
+        } catch {
+          break;
+        }
+      }
+      const remaining = await countOfflineOrders();
+      if (!cancelled) {
+        setOfflineCount(remaining);
+        setSyncingOffline(false);
+        if (synced > 0) {
+          toast.success(`${synced} order offline terkirim`, {
+            description: 'Bill dan KDS sudah disinkronkan.',
+          });
+          router.refresh();
+        } else if (failed > 0 && remaining > 0) {
+          toast.warning('Sebagian order offline belum terkirim', {
+            description: 'Akan dicoba lagi saat koneksi stabil.',
+          });
+        }
+      }
+    };
+    const refreshQueueCount = () => {
+      void countOfflineOrders().then((count) => {
+        if (!cancelled) setOfflineCount(count);
+      });
+    };
+    refreshQueueCount();
+    void sync();
+    window.addEventListener('online', sync);
+    window.addEventListener('cuetap:offline-queue', refreshQueueCount);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('online', sync);
+      window.removeEventListener('cuetap:offline-queue', refreshQueueCount);
+    };
+  }, [router]);
 
   useEffect(() => {
     const refresh = () => {
@@ -378,6 +462,18 @@ export function CashierBoard({
               </span>
               Live · <LiveClock className="text-[10px]" />
             </div>
+            {offlineCount > 0 || syncingOffline ? (
+              <div
+                className="flex items-center gap-1.5 rounded-full border border-tertiary/30 bg-tertiary/[0.08] px-2.5 py-1.5 text-[10px] font-bold text-tertiary"
+                title="Order tersimpan lokal dan dikirim saat online"
+              >
+                <Icon
+                  name={syncingOffline ? 'sync' : 'cloud_off'}
+                  className={cn('text-[14px]', syncingOffline && 'animate-spin')}
+                />
+                {offlineCount} offline
+              </div>
+            ) : null}
             <Button
               variant="secondary"
               size="md"

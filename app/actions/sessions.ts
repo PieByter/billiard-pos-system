@@ -26,10 +26,11 @@ export async function getRatePreviewAction(
 export async function startSessionAction(
   tableId: string,
   guestName?: string | null,
+  targetMinutes?: number | null,
 ): Promise<ActionResult<Awaited<ReturnType<typeof startBilliardSession>>>> {
   return runAction(async () => {
     const staff = await requireStaffAction(['cashier', 'owner']);
-    const result = await startBilliardSession(tableId, staff.id, guestName);
+    const result = await startBilliardSession(tableId, staff.id, guestName, targetMinutes);
     revalidateOps();
     return result;
   });

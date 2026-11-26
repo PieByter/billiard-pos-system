@@ -142,7 +142,12 @@ export async function getCustomerData(token: string): Promise<CustomerData | nul
     db
       .select()
       .from(menuCategories)
-      .where(eq(menuCategories.active, true))
+      .where(
+        and(
+          eq(menuCategories.active, true),
+          eq(menuCategories.outletId, context.table.outletId),
+        ),
+      )
       .orderBy(asc(menuCategories.sortOrder)),
     db
       .select({ item: menuItems, categoryName: menuCategories.name })
@@ -152,10 +157,11 @@ export async function getCustomerData(token: string): Promise<CustomerData | nul
         and(
           eq(menuCategories.active, true),
           eq(menuItems.isAvailable, true),
+          eq(menuItems.outletId, context.table.outletId),
         ),
       )
       .orderBy(asc(menuItems.sortOrder)),
-    loadVenueSettings(),
+    loadVenueSettings(context.table.outletId),
   ]);
 
   const itemViews: MenuItemView[] = itemRows.map((row) =>

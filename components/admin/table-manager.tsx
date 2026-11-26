@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import {
   rotateTableQrAction,
   saveTableAction,
+  setTableMaintenanceAction,
   setTableSelfOrderAction,
 } from '@/app/actions/admin';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +29,7 @@ const STATE_LABEL: Record<string, string> = {
   paused: 'Paused',
   occupied: 'Occupied',
   cleaning: 'Cleaning',
+  maintenance: 'Maintenance',
 };
 
 export function TableManager({ data }: { data: TablesAdminData }) {
@@ -37,6 +39,9 @@ export function TableManager({ data }: { data: TablesAdminData }) {
   const [qrTable, setQrTable] = useState<TableRow | null>(null);
   const [rotateTarget, setRotateTarget] = useState<TableRow | null>(null);
   const [rotating, setRotating] = useState(false);
+  const [maintenanceTarget, setMaintenanceTarget] = useState<TableRow | null>(null);
+  const [maintenanceNote, setMaintenanceNote] = useState('');
+  const [maintenanceBusy, setMaintenanceBusy] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const stats = useMemo(() => {
@@ -76,6 +81,35 @@ export function TableManager({ data }: { data: TablesAdminData }) {
       description: 'QR lama otomatis tidak berlaku.',
     });
     setRotateTarget(null);
+    router.refresh();
+  }
+
+  function openMaintenance(table: TableRow) {
+    setMaintenanceTarget(table);
+    setMaintenanceNote(table.maintenanceNote ?? '');
+  }
+
+  async function toggleMaintenance() {
+    if (!maintenanceTarget) return;
+    setMaintenanceBusy(true);
+    const nextActive = !maintenanceTarget.maintenanceAt;
+    const result = await setTableMaintenanceAction(
+      maintenanceTarget.id,
+      nextActive,
+      maintenanceNote,
+    );
+    setMaintenanceBusy(false);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success(
+      nextActive
+        ? `Meja ${maintenanceTarget.code} masuk maintenance`
+        : `Meja ${maintenanceTarget.code} siap dipakai`,
+    );
+    setMaintenanceTarget(null);
+    setMaintenanceNote('');
     router.refresh();
   }
 
@@ -179,9 +213,11 @@ export function TableManager({ data }: { data: TablesAdminData }) {
                         ? 'paused'
                         : table.state === 'cleaning'
                           ? 'error'
-                          : table.state === 'occupied'
-                            ? 'cyan'
-                            : 'outline'
+                          : table.state === 'maintenance'
+                            ? 'paused'
+                            : table.state === 'occupied'
+                              ? 'cyan'
+                              : 'outline'
                   }
                   dot
                 >
@@ -265,6 +301,16 @@ export function TableManager({ data }: { data: TablesAdminData }) {
                 >
                   <Icon name="autorenew" className="text-[17px]" />
                 </Button>
+                <Button
+                  variant={table.maintenanceAt ? 'primary' : 'secondary'}
+                  size="icon-sm"
+                  onClick={() => openMaintenance(table)}
+                  title={
+                    table.maintenanceAt ? 'Selesaikan maintenance' : 'Set meja maintenance'
+                  }
+                >
+                  <Icon name="handyman" className="text-[17px]" />
+                </Button>
               </div>
             </article>
           ))}
@@ -326,6 +372,67 @@ export function TableManager({ data }: { data: TablesAdminData }) {
             </p>
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(maintenanceTarget)}
+        onClose={() => (maintenanceBusy ? undefined : setMaintenanceTarget(null))}
+        title={
+          maintenanceTarget?.maintenanceAt
+            ? `Selesaikan maintenance ${maintenanceTarget.code}`
+            : `Set maintenance ${maintenanceTarget?.code ?? ''}`
+        }
+        subtitle="Meja maintenance tidak bisa dipakai untuk sesi, bill, atau self-order."
+        icon="handyman"
+        size="sm"
+        footer={
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={() => setMaintenanceTarget(null)}
+              disabled={maintenanceBusy}
+            >
+              Batal
+            </Button>
+            <Button
+              variant={maintenanceTarget?.maintenanceAt ? 'primary' : 'danger'}
+              className="flex-[2]"
+              onClick={toggleMaintenance}
+              loading={maintenanceBusy}
+            >
+              <Icon name="handyman" className="text-[17px]" />
+              {maintenanceTarget?.maintenanceAt ? 'Selesai & siap pakai' : 'Mulai maintenance'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          {maintenanceTarget?.maintenanceAt ? (
+            <div className="rounded-lg border border-primary/25 bg-primary/[0.06] p-3 text-body-sm text-on-surface-variant">
+              Meja sedang maintenance sejak{' '}
+              {new Date(maintenanceTarget.maintenanceAt).toLocaleString('id-ID', {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })}
+              .
+            </div>
+          ) : null}
+          <Input
+            label="Catatan maintenance"
+            placeholder="Contoh: ganti kain meja, leveling, perbaikan cushion"
+            maxLength={200}
+            value={maintenanceNote}
+            onChange={(event) => setMaintenanceNote(event.target.value)}
+            disabled={Boolean(maintenanceTarget?.maintenanceAt)}
+          />
+          {!maintenanceTarget?.maintenanceAt ? (
+            <p className="text-[10px] text-on-surface-variant">
+              Bill atau sesi aktif harus ditutup terlebih dahulu. Setelah selesai, meja otomatis
+              kembali available.
+            </p>
+          ) : null}
+        </div>
       </Modal>
 
       <ConfirmDialog

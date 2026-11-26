@@ -1,3 +1,6 @@
+export const DEFAULT_OUTLET_ID = '00000000-0000-4000-8000-000000000001';
+export const ACTIVE_OUTLET_COOKIE = 'cuetap_outlet';
+
 export const VENUE_NAME = 'Cue & Tap';
 export const VENUE_TAGLINE = 'Billiard Hall & Lounge';
 export const DEPOSIT_LABEL =
@@ -58,6 +61,7 @@ export const PAY_METHOD_LABELS: Record<string, string> = {
   qris: 'QRIS',
   transfer: 'Transfer',
   edc: 'Kartu / EDC',
+  balance: 'Saldo Member',
 };
 
 export const STATION_LABELS: Record<string, string> = {

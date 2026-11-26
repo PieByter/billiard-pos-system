@@ -71,7 +71,9 @@ export function TableCard({
         ? 'border-tertiary/35 glow-paused bg-surface-container'
         : table.state === 'cleaning'
           ? 'border-dashed border-error/35 bg-surface-container-low/60'
-          : table.state === 'occupied'
+          : table.state === 'maintenance'
+            ? 'border-dashed border-tertiary/40 bg-tertiary/[0.04]'
+            : table.state === 'occupied'
             ? 'border-outline-variant/45 bg-surface-container'
             : 'border-outline-variant/25 bg-surface-container-low/55 hover:border-outline-variant/50 hover:bg-surface-container-low';
 
@@ -120,11 +122,13 @@ export function TableCard({
             {bill?.guestName ||
               (table.state === 'cleaning'
                 ? 'Turnover selesai'
-                : table.state === 'available'
-                  ? table.kind === 'billiard'
-                    ? 'Meja kosong / siap pakai'
-                    : 'Meja cafe kosong'
-                  : 'Walk-in guest')}
+                : table.state === 'maintenance'
+                  ? 'Meja dalam maintenance'
+                  : table.state === 'available'
+                    ? table.kind === 'billiard'
+                      ? 'Meja kosong / siap pakai'
+                      : 'Meja cafe kosong'
+                    : 'Walk-in guest')}
           </p>
           <span className="mt-0.5 block text-[10px] uppercase tracking-wider text-outline">
             {session
@@ -149,6 +153,10 @@ export function TableCard({
           ) : table.state === 'cleaning' ? (
             <Badge tone="error" dot>
               Cleaning
+            </Badge>
+          ) : table.state === 'maintenance' ? (
+            <Badge tone="paused" dot>
+              Maintenance
             </Badge>
           ) : table.state === 'occupied' ? (
             <Badge tone="cyan" dot>
@@ -302,6 +310,18 @@ export function TableCard({
             <p className="text-body-sm font-semibold text-on-surface">Menunggu pembersihan</p>
             <p className="text-[10px] text-on-surface-variant">
               Selesai {table.needsCleaningAt ? formatRelative(table.needsCleaningAt) : 'baru saja'}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {table.state === 'maintenance' ? (
+        <div className="flex items-center gap-2 rounded-lg border border-tertiary/25 bg-tertiary/[0.06] px-2.5 py-2">
+          <Icon name="handyman" className="text-[20px] text-tertiary" />
+          <div className="min-w-0 flex-1">
+            <p className="text-body-sm font-semibold text-on-surface">Meja maintenance</p>
+            <p className="text-[10px] text-on-surface-variant">
+              {table.maintenanceNote || 'Tidak bisa dipakai sampai selesai.'}
             </p>
           </div>
         </div>

@@ -1,5 +1,6 @@
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { dbNow, getDb } from '@/lib/db';
+import { getActiveOutletId } from '@/lib/outlet';
 import {
   billiardRates,
   billiardSessions,
@@ -33,33 +34,49 @@ import {
 export async function getCashierData(): Promise<CashierData> {
   const db = await getDb();
   const serverNow = await dbNow(db);
+  const outletId = await getActiveOutletId();
 
   const [tableRows, rateRows, billRows, shiftRows, categoryRows, menuRows, serviceRows] =
     await Promise.all([
       db
         .select()
         .from(venueTables)
-        .where(eq(venueTables.active, true))
+        .where(and(eq(venueTables.active, true), eq(venueTables.outletId, outletId)))
         .orderBy(asc(venueTables.kind), asc(venueTables.sortOrder)),
-      db.select().from(billiardRates).orderBy(asc(billiardRates.sortOrder)),
-      db.select().from(bills).where(eq(bills.status, 'open')),
+      db
+        .select()
+        .from(billiardRates)
+        .where(eq(billiardRates.outletId, outletId))
+        .orderBy(asc(billiardRates.sortOrder)),
+      db
+        .select()
+        .from(bills)
+        .where(and(eq(bills.status, 'open'), eq(bills.outletId, outletId))),
       db
         .select({ shift: shifts, staffName: profiles.name })
         .from(shifts)
         .leftJoin(profiles, eq(shifts.staffId, profiles.id))
-        .where(eq(shifts.status, 'open'))
+        .where(and(eq(shifts.status, 'open'), eq(shifts.outletId, outletId)))
         .limit(1),
       db
         .select()
         .from(menuCategories)
-        .where(eq(menuCategories.active, true))
+        .where(
+          and(eq(menuCategories.active, true), eq(menuCategories.outletId, outletId)),
+        )
         .orderBy(asc(menuCategories.sortOrder)),
-      db.select().from(menuItems).orderBy(asc(menuItems.sortOrder)),
+      db
+        .select()
+        .from(menuItems)
+        .where(eq(menuItems.outletId, outletId))
+        .orderBy(asc(menuItems.sortOrder)),
       db
         .select({ request: serviceRequests, tableCode: venueTables.code })
         .from(serviceRequests)
         .leftJoin(venueTables, eq(serviceRequests.tableId, venueTables.id))
-        .where(eq(serviceRequests.status, 'open'))
+        .where(
+          and(eq(serviceRequests.status, 'open'), eq(serviceRequests.outletId, outletId)),
+        )
         .orderBy(asc(serviceRequests.createdAt)),
     ]);
 
@@ -144,6 +161,7 @@ export async function getCashierData(): Promise<CashierData> {
     if (bill?.activeSession?.status === 'running') state = 'running';
     else if (bill?.activeSession?.status === 'paused') state = 'paused';
     else if (bill) state = 'occupied';
+    else if (table.maintenanceAt) state = 'maintenance';
     else if (table.needsCleaningAt) state = 'cleaning';
     else state = 'available';
 
@@ -168,6 +186,8 @@ export async function getCashierData(): Promise<CashierData> {
           }
         : null,
       needsCleaningAt: table.needsCleaningAt?.toISOString() ?? null,
+      maintenanceAt: table.maintenanceAt?.toISOString() ?? null,
+      maintenanceNote: table.maintenanceNote,
       state,
       bill,
       serviceRequests: requestsByTable.get(table.id) ?? [],

@@ -2,6 +2,7 @@ import { and, count, eq, gte, sql } from 'drizzle-orm';
 import { getDb, dbNow } from '@/lib/db';
 import { bills, cashMovements, payments, refunds, shifts } from '@/lib/db/schema';
 import { AppError, isUniqueViolation } from '@/lib/errors';
+import { getActiveOutletId } from '@/lib/outlet';
 import { audit } from './audit';
 
 export async function openShift(staffId: string, openingCash: number) {
@@ -9,6 +10,7 @@ export async function openShift(staffId: string, openingCash: number) {
   if (!Number.isFinite(cash) || cash < 0) {
     throw new AppError('INVALID_CASH', 'Modal kas awal tidak valid.');
   }
+  const outletId = await getActiveOutletId();
   const db = await getDb();
   try {
     return await db.transaction(async (tx) => {
@@ -16,13 +18,14 @@ export async function openShift(staffId: string, openingCash: number) {
       const [existing] = await tx
         .select({ id: shifts.id })
         .from(shifts)
-        .where(eq(shifts.status, 'open'))
+        .where(and(eq(shifts.status, 'open'), eq(shifts.outletId, outletId)))
         .limit(1);
       if (existing) throw new AppError('SHIFT_ALREADY_OPEN', 'Masih ada shift yang terbuka.');
 
       const [shift] = await tx
         .insert(shifts)
         .values({
+          outletId,
           staffId,
           status: 'open',
           openingCash: cash,
@@ -59,20 +62,21 @@ export async function closeShift(
     throw new AppError('INVALID_CASH', 'Jumlah kas fisik tidak valid.');
   }
 
+  const outletId = await getActiveOutletId();
   const db = await getDb();
   return db.transaction(async (tx) => {
     const now = await dbNow(tx);
     const [shift] = await tx
       .select()
       .from(shifts)
-      .where(eq(shifts.status, 'open'))
+      .where(and(eq(shifts.status, 'open'), eq(shifts.outletId, outletId)))
       .limit(1);
     if (!shift) throw new AppError('NO_OPEN_SHIFT', 'Tidak ada shift yang sedang terbuka.');
 
     const [openBill] = await tx
       .select({ total: count() })
       .from(bills)
-      .where(eq(bills.status, 'open'));
+      .where(and(eq(bills.status, 'open'), eq(bills.outletId, outletId)));
     if ((openBill?.total ?? 0) > 0) {
       throw new AppError(
         'OPEN_BILLS_REMAIN',
@@ -86,6 +90,7 @@ export async function closeShift(
       .where(
         and(
           eq(payments.method, 'cash'),
+          eq(payments.outletId, outletId),
           gte(payments.createdAt, shift.openedAt),
         ),
       );
@@ -96,6 +101,7 @@ export async function closeShift(
       .where(
         and(
           eq(payments.method, 'cash'),
+          eq(refunds.outletId, outletId),
           gte(refunds.createdAt, shift.openedAt),
         ),
       );

@@ -51,6 +51,7 @@ export function buildSessionView(session: BilliardSession, now: Date): SessionVi
     pausedAt: iso(session.pausedAt),
     pausedSeconds: session.pausedSeconds,
     baseElapsedSeconds,
+    targetMinutes: session.targetMinutes,
     ratePerHour: session.ratePerHour,
     minMinutes: session.minMinutes,
     incrementMinutes: session.incrementMinutes,
@@ -115,7 +116,11 @@ export function buildBillView(
   const pendingOrdersCount = orderViews.filter((order) => order.status === 'pending').length;
 
   const totalDiscountAmount =
-    bill.discountAmount + bill.memberDiscountAmount + bill.promoDiscountAmount;
+    bill.discountAmount +
+    bill.memberDiscountAmount +
+    bill.promoDiscountAmount +
+    bill.pointsDiscountAmount +
+    bill.voucherDiscountAmount;
   const totals = computeBillTotals({
     subtotal: sessionSubtotal + ordersSubtotal,
     discountAmount: totalDiscountAmount,
@@ -140,6 +145,10 @@ export function buildBillView(
     memberDiscountAmount: bill.memberDiscountAmount,
     promotionCode: bill.promotionCode,
     promoDiscountAmount: bill.promoDiscountAmount,
+    pointsRedeemed: bill.pointsRedeemed,
+    pointsDiscountAmount: bill.pointsDiscountAmount,
+    voucherCode: bill.voucherCode,
+    voucherDiscountAmount: bill.voucherDiscountAmount,
     totalDiscountAmount: totals.discountAmount,
     penaltyAmount: bill.penaltyAmount,
     taxRateBps: bill.taxRateBps,

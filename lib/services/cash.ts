@@ -2,6 +2,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { dbNow, getDb } from '@/lib/db';
 import { cashMovements, shifts } from '@/lib/db/schema';
 import { AppError } from '@/lib/errors';
+import { getActiveOutletId } from '@/lib/outlet';
 import { audit } from './audit';
 
 export type CashMovementType =
@@ -30,13 +31,18 @@ export async function addCashMovement(
   }
   if (!reason) throw new AppError('REASON_REQUIRED', 'Alasan movement kas wajib diisi.');
 
+  const outletId = await getActiveOutletId();
   const db = await getDb();
   return db.transaction(async (tx) => {
     const now = await dbNow(tx);
     const [shift] = await tx
       .select()
       .from(shifts)
-      .where(input.shiftId ? eq(shifts.id, input.shiftId) : eq(shifts.status, 'open'))
+      .where(
+        input.shiftId
+          ? eq(shifts.id, input.shiftId)
+          : and(eq(shifts.status, 'open'), eq(shifts.outletId, outletId)),
+      )
       .limit(1);
     if (!shift) throw new AppError('NO_OPEN_SHIFT', 'Tidak ada shift aktif.');
     if (shift.status !== 'open') throw new AppError('SHIFT_CLOSED', 'Shift sudah ditutup.');
@@ -44,6 +50,7 @@ export async function addCashMovement(
     const [created] = await tx
       .insert(cashMovements)
       .values({
+        outletId: shift.outletId,
         shiftId: shift.id,
         type: input.type,
         amount: SIGN[input.type] * amount,

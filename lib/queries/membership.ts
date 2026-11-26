@@ -1,6 +1,14 @@
-import { asc, desc, eq, ilike, or } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, or } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { memberTiers, members, promotions } from '@/lib/db/schema';
+import {
+  memberDeposits,
+  memberTiers,
+  members,
+  menuItems,
+  promotions,
+  vouchers,
+} from '@/lib/db/schema';
+import { getActiveOutletId } from '@/lib/outlet';
 import type {
   MemberAdminData,
   MemberTierView,
@@ -23,8 +31,11 @@ function mapMember(row: {
     tierName: row.tierName,
     points: row.member.points,
     totalSpend: row.member.totalSpend,
+    balance: row.member.balance,
     active: row.member.active,
     consent: row.member.consent,
+    notifyEmail: row.member.notifyEmail,
+    notifyWhatsapp: row.member.notifyWhatsapp,
     note: row.member.note,
     createdAt: row.member.createdAt.toISOString(),
   };
@@ -32,13 +43,33 @@ function mapMember(row: {
 
 export async function getMemberAdminData(): Promise<MemberAdminData> {
   const db = await getDb();
-  const [tierRows, memberRows] = await Promise.all([
-    db.select().from(memberTiers).orderBy(asc(memberTiers.sortOrder)),
+  const outletId = await getActiveOutletId();
+  const [tierRows, memberRows, voucherRows, depositRows] = await Promise.all([
+    db
+      .select()
+      .from(memberTiers)
+      .where(eq(memberTiers.outletId, outletId))
+      .orderBy(asc(memberTiers.sortOrder)),
     db
       .select({ member: members, tierName: memberTiers.name })
       .from(members)
       .leftJoin(memberTiers, eq(members.tierId, memberTiers.id))
+      .where(eq(members.outletId, outletId))
       .orderBy(desc(members.totalSpend), asc(members.name)),
+    db
+      .select({ voucher: vouchers, memberName: members.name })
+      .from(vouchers)
+      .leftJoin(members, eq(vouchers.memberId, members.id))
+      .where(eq(vouchers.outletId, outletId))
+      .orderBy(desc(vouchers.createdAt))
+      .limit(100),
+    db
+      .select({ deposit: memberDeposits, memberName: members.name })
+      .from(memberDeposits)
+      .innerJoin(members, eq(memberDeposits.memberId, members.id))
+      .where(eq(memberDeposits.outletId, outletId))
+      .orderBy(desc(memberDeposits.createdAt))
+      .limit(100),
   ]);
   return {
     tiers: tierRows.map(
@@ -48,29 +79,58 @@ export async function getMemberAdminData(): Promise<MemberAdminData> {
         minSpend: tier.minSpend,
         discountBps: tier.discountBps,
         pointsMultiplierBps: tier.pointsMultiplierBps,
+        benefits: tier.benefits,
         active: tier.active,
         sortOrder: tier.sortOrder,
       }),
     ),
     members: memberRows.map(mapMember),
+    vouchers: voucherRows.map((row) => ({
+      id: row.voucher.id,
+      code: row.voucher.code,
+      memberId: row.voucher.memberId,
+      memberName: row.memberName,
+      name: row.voucher.name,
+      type: row.voucher.type,
+      value: row.voucher.value,
+      minSpend: row.voucher.minSpend,
+      expiresAt: row.voucher.expiresAt?.toISOString() ?? null,
+      usedAt: row.voucher.usedAt?.toISOString() ?? null,
+      billId: row.voucher.billId,
+      active: row.voucher.active,
+      createdAt: row.voucher.createdAt.toISOString(),
+    })),
+    deposits: depositRows.map((row) => ({
+      id: row.deposit.id,
+      memberId: row.deposit.memberId,
+      type: row.deposit.type,
+      method: row.deposit.method,
+      amount: row.deposit.amount,
+      note: row.deposit.note,
+      createdAt: row.deposit.createdAt.toISOString(),
+    })),
   };
 }
 
 export async function searchMembers(term: string): Promise<MemberView[]> {
   const db = await getDb();
+  const outletId = await getActiveOutletId();
   const query = term.trim();
   const rows = await db
     .select({ member: members, tierName: memberTiers.name })
     .from(members)
     .leftJoin(memberTiers, eq(members.tierId, memberTiers.id))
     .where(
-      query
-        ? or(
-            ilike(members.name, `%${query}%`),
-            ilike(members.phone, `%${query}%`),
-            ilike(members.code, `%${query}%`),
-          )
-        : undefined,
+      and(
+        eq(members.outletId, outletId),
+        query
+          ? or(
+              ilike(members.name, `%${query}%`),
+              ilike(members.phone, `%${query}%`),
+              ilike(members.code, `%${query}%`),
+            )
+          : undefined,
+      ),
     )
     .orderBy(asc(members.name))
     .limit(20);
@@ -79,8 +139,21 @@ export async function searchMembers(term: string): Promise<MemberView[]> {
 
 export async function getPromotionsAdminData(): Promise<PromotionsAdminData> {
   const db = await getDb();
-  const rows = await db.select().from(promotions).orderBy(desc(promotions.createdAt));
+  const outletId = await getActiveOutletId();
+  const [rows, menuRows] = await Promise.all([
+    db
+      .select()
+      .from(promotions)
+      .where(eq(promotions.outletId, outletId))
+      .orderBy(desc(promotions.createdAt)),
+    db
+      .select({ id: menuItems.id, name: menuItems.name, price: menuItems.price })
+      .from(menuItems)
+      .where(eq(menuItems.outletId, outletId))
+      .orderBy(asc(menuItems.name)),
+  ]);
   return {
+    menuItems: menuRows,
     promotions: rows.map(
       (promo): PromotionView => ({
         id: promo.id,
@@ -97,6 +170,14 @@ export async function getPromotionsAdminData(): Promise<PromotionsAdminData> {
         validTo: promo.validTo?.toISOString() ?? null,
         appliesTo: promo.appliesTo,
         memberOnly: promo.memberOnly,
+        stackable: promo.stackable,
+        autoApply: promo.autoApply,
+        daysOfWeek: promo.daysOfWeek,
+        startMinute: promo.startMinute,
+        endMinute: promo.endMinute,
+        maxUsesPerMember: promo.maxUsesPerMember,
+        bundlePrice: promo.bundlePrice,
+        bundleItemIds: promo.bundleItemIds,
         active: promo.active,
       }),
     ),

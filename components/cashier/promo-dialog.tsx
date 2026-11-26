@@ -78,16 +78,31 @@ export function PromoDialog({
       icon="sell"
       size="sm"
       footer={
-        bill?.promotionCode ? (
-          <Button variant="danger" onClick={remove} loading={loading}>
-            Lepas promo
-          </Button>
-        ) : (
-          <Button variant="primary" onClick={apply} loading={loading} disabled={code.trim().length < 3}>
-            <Icon name="sell" className="text-[18px]" />
-            Terapkan promo
-          </Button>
-        )
+        <div className="flex flex-col gap-2">
+          {bill?.promotionCode && code.trim().length < 3 ? (
+            <Button variant="danger" onClick={remove} loading={loading}>
+              <Icon name="delete_sweep" className="text-[17px]" />
+              Lepas semua promo
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="primary"
+                onClick={apply}
+                loading={loading}
+                disabled={code.trim().length < 3}
+              >
+                <Icon name="sell" className="text-[18px]" />
+                Terapkan promo
+              </Button>
+              {bill?.promotionCode ? (
+                <Button variant="ghost" onClick={remove} loading={loading}>
+                  Lepas semua promo
+                </Button>
+              ) : null}
+            </>
+          )}
+        </div>
       }
     >
       <div className="flex flex-col gap-3">
@@ -98,7 +113,8 @@ export function PromoDialog({
               {bill.promotionCode}
             </div>
             <p className="mt-1 text-[11px] text-on-surface-variant">
-              Diskon promo {formatRp(bill.promoDiscountAmount)} sedang aktif.
+              Diskon promo {formatRp(bill.promoDiscountAmount)} sedang aktif. Promo stackable bisa
+              ditambah dengan kode lain; promo non-stackable harus dilepas dulu.
             </p>
           </div>
         ) : null}

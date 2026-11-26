@@ -31,11 +31,18 @@ export async function applyPromotionAction(
 
 export async function removePromotionAction(
   billId: string,
+  code?: string | null,
 ): Promise<ActionResult<Awaited<ReturnType<typeof removePromotionFromBill>>>> {
   return runAction(async () => {
     const staff = await requireStaffAction(['cashier', 'owner']);
-    const data = parseOrThrow(z.string().uuid(), billId);
-    const result = await removePromotionFromBill(staff.id, data);
+    const data = parseOrThrow(
+      z.object({
+        billId: z.string().uuid(),
+        code: z.string().max(24).optional().nullable(),
+      }),
+      { billId, code },
+    );
+    const result = await removePromotionFromBill(staff.id, data.billId, data.code);
     revalidateOps();
     return result;
   });
@@ -52,8 +59,8 @@ export async function savePromotionAction(
         code: z.string().min(3).max(24),
         name: z.string().min(2).max(100),
         description: z.string().max(500).optional().nullable(),
-        type: z.enum(['percent', 'fixed']),
-        value: z.coerce.number().int().min(1).max(100_000_000),
+        type: z.enum(['percent', 'fixed', 'bundle']),
+        value: z.coerce.number().int().min(0).max(100_000_000),
         minSpend: z.coerce.number().int().min(0).max(1_000_000_000),
         maxDiscount: z.coerce.number().int().min(0).max(1_000_000_000).optional().nullable(),
         maxUses: z.coerce.number().int().min(1).max(1_000_000).optional().nullable(),
@@ -61,6 +68,14 @@ export async function savePromotionAction(
         validTo: z.string().optional().nullable(),
         appliesTo: z.enum(['all', 'billiard', 'fnb']),
         memberOnly: z.boolean().optional(),
+        stackable: z.boolean().optional(),
+        autoApply: z.boolean().optional(),
+        daysOfWeek: z.array(z.coerce.number().int().min(1).max(7)).max(7).optional(),
+        startMinute: z.coerce.number().int().min(0).max(1439).optional(),
+        endMinute: z.coerce.number().int().min(1).max(1440).optional(),
+        maxUsesPerMember: z.coerce.number().int().min(1).max(1_000_000).optional().nullable(),
+        bundlePrice: z.coerce.number().int().min(1).max(100_000_000).optional().nullable(),
+        bundleItemIds: z.array(z.string().uuid()).max(20).optional(),
         active: z.boolean().optional(),
       }),
       input,

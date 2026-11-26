@@ -14,7 +14,7 @@ import { refundPayment } from '@/lib/services/refunds';
 import type { PaymentInput } from '@/lib/types';
 
 const paymentSchema = z.object({
-  method: z.enum(['cash', 'qris', 'transfer', 'edc']),
+  method: z.enum(['cash', 'qris', 'transfer', 'edc', 'balance']),
   amount: z.coerce.number().int().min(1).max(1_000_000_000),
   tendered: z.coerce.number().int().min(0).max(1_000_000_000).optional(),
 });

@@ -11,6 +11,7 @@ import {
   venueTables,
   type StationType,
 } from '@/lib/db/schema';
+import { getActiveOutletId } from '@/lib/outlet';
 import { loadVenueSettings } from '@/lib/services/settings';
 import { buildBillView } from './shared';
 
@@ -24,6 +25,8 @@ export async function getBillPrintData(billId: string) {
     .where(eq(bills.id, billId))
     .limit(1);
   if (!row) return null;
+  const outletId = await getActiveOutletId();
+  if (row.bill.outletId !== outletId) return null;
 
   const [sessions, orderRows, staffRows] = await Promise.all([
     db
@@ -51,7 +54,7 @@ export async function getBillPrintData(billId: string) {
       .leftJoin(profiles, eq(refunds.approvedBy, profiles.id))
       .where(eq(refunds.billId, billId))
       .orderBy(asc(refunds.createdAt)),
-    loadVenueSettings(),
+    loadVenueSettings(row.bill.outletId),
   ]);
 
   const staffById = new Map(staffRows.map((staff) => [staff.id, staff.name]));
@@ -102,6 +105,8 @@ export async function getKitchenPrintData(
     .where(eq(orders.id, orderId))
     .limit(1);
   if (!row) return null;
+  const outletId = await getActiveOutletId();
+  if (row.order.outletId !== outletId) return null;
 
   const items =
     station === 'all'

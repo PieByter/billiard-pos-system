@@ -22,6 +22,7 @@ async function main() {
     pauseBilliardSession,
     resumeBilliardSession,
     markTableReady,
+    openCafeBill,
   } = await import('../lib/services/sessions');
   const { placeOrder, approveOrder, markStationReady, markOrderServed, rejectOrder } = await import(
     '../lib/services/orders'
@@ -32,6 +33,7 @@ async function main() {
   const {
     createReservation,
     createWaitlistEntry,
+    setReservationDeposit,
     setReservationStatus,
     setWaitlistStatus,
   } = await import('../lib/services/reservations');
@@ -39,13 +41,40 @@ async function main() {
     '../lib/services/rate-schedules'
   );
   const { createBillSplits, payBillSplit } = await import('../lib/services/splits');
-  const { createBillQrisIntent, settleQrisIntent } = await import(
-    '../lib/services/payment-intents'
-  );
-  const { saveMember, attachMemberToBill } = await import('../lib/services/membership');
-  const { applyPromotionToBill } = await import('../lib/services/promotions');
-  const { processNotificationOutbox } = await import('../lib/services/notifications');
-  const { saveIngredient, saveRecipe } = await import('../lib/services/inventory');
+  const {
+    createBillQrisIntent,
+    createBillSplitQrisIntent,
+    settleQrisIntent,
+    simulateMockIntentPaid,
+  } = await import('../lib/services/payment-intents');
+  const {
+    saveMember,
+    attachMemberToBill,
+    topUpMemberBalance,
+    issueVoucher,
+    applyVoucherToBill,
+    redeemMemberPoints,
+  } = await import('../lib/services/membership');
+  const { applyPromotionToBill, savePromotion } = await import('../lib/services/promotions');
+  const {
+    processNotificationOutbox,
+    saveNotificationTemplate,
+    enqueueReservationReminder,
+    getNotificationsData,
+  } = await import('../lib/services/notifications');
+  const {
+    saveIngredient,
+    saveRecipe,
+    saveSupplier,
+    savePurchaseOrder,
+    setPurchaseOrderStatus,
+    postStockOpname,
+  } = await import('../lib/services/inventory');
+  const { savePenaltyRule } = await import('../lib/services/penalties');
+  const { claimPrintJobs, completePrintJob } = await import('../lib/services/printing');
+  const { saveOutlet } = await import('../lib/services/outlets');
+  const { saveTable } = await import('../lib/services/admin');
+  const { getCashierData } = await import('../lib/queries/cashier');
 
   const db = await getDb();
 
@@ -426,6 +455,369 @@ async function main() {
   assert(receiptNotification, 'e-receipt masuk outbox');
   const processed = await processNotificationOutbox();
   assert(processed.sent >= 1, 'outbox e-receipt terkirim');
+  const [gatewayPayment] = await db
+    .select()
+    .from(schema.payments)
+    .where(eq(schema.payments.billId, gatewayStart.billId))
+    .limit(1);
+  assert(gatewayPayment, 'payment gateway tersedia');
+  const gatewayRefund = await refundPayment(owner.id, {
+    billId: gatewayStart.billId,
+    paymentId: gatewayPayment.id,
+    amount: 5_000,
+    category: 'fnb',
+    reason: 'Integration gateway refund',
+  });
+  assert(gatewayRefund.gatewayRefunded, 'refund gateway otomatis dipanggil');
+
+  /* ------------------- Inventory: supplier, PO, opname ------------------ */
+  const [beforePo] = await db
+    .select()
+    .from(schema.ingredients)
+    .where(eq(schema.ingredients.id, testIngredient.id))
+    .limit(1);
+  assert(beforePo, 'bahan test tersedia sebelum PO');
+  const supplier = await saveSupplier(owner.id, {
+    name: 'Integration Supplier',
+    phone: '081200007777',
+    email: 'supplier@example.com',
+  });
+  const po = await savePurchaseOrder(owner.id, {
+    supplierId: supplier.id,
+    notes: 'Integration PO',
+    items: [{ ingredientId: testIngredient.id, qty: 10, unitCost: 1200 }],
+  });
+  await setPurchaseOrderStatus(owner.id, po.id, 'received');
+  const [afterPo] = await db
+    .select()
+    .from(schema.ingredients)
+    .where(eq(schema.ingredients.id, testIngredient.id))
+    .limit(1);
+  assert(afterPo?.stockQty === beforePo.stockQty + 10, 'PO received menambah stok');
+  assert(afterPo?.costPerUnit === 1200, 'PO received update harga modal');
+  const opname = await postStockOpname(
+    owner.id,
+    [{ ingredientId: testIngredient.id, countedQty: 50 }],
+    'Integration opname',
+  );
+  assert(opname.differenceUnits > 0, 'opname mencatat selisih');
+  const [afterOpname] = await db
+    .select()
+    .from(schema.ingredients)
+    .where(eq(schema.ingredients.id, testIngredient.id))
+    .limit(1);
+  assert(afterOpname?.stockQty === 50, 'opname menyesuaikan stok fisik');
+
+  /* -------------------- Notification template & cron ------------------- */
+  await saveNotificationTemplate(owner.id, {
+    templateKey: 'test',
+    name: 'Integration Template',
+    channel: 'log',
+    subject: 'Test {{memberName}}',
+    body: 'Halo {{memberName}}, ini template integration.',
+    active: true,
+  });
+  const notificationData = await getNotificationsData();
+  assert(
+    notificationData.templates.some(
+      (template) => template.templateKey === 'test' && !template.isDefault,
+    ),
+    'template notifikasi kustom tersimpan',
+  );
+  const reservationSoon = new Date(Date.now() + 2 * 60 * 60_000);
+  const soonDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(reservationSoon);
+  const soonTime = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(reservationSoon);
+  const [reminderTable] = await db
+    .select()
+    .from(schema.venueTables)
+    .where(eq(schema.venueTables.code, 'B2'))
+    .limit(1);
+  assert(reminderTable, 'meja B2 tersedia');
+  const reminderReservation = await createReservation(cashier.id, {
+    tableId: reminderTable.id,
+    guestName: 'Reminder Guest',
+    phone: '081277776666',
+    partySize: 2,
+    date: soonDate,
+    startTime: soonTime,
+    durationMinutes: 60,
+  });
+  const reminder = await enqueueReservationReminder(reminderReservation.id);
+  assert(reminder, 'reminder reservasi masuk outbox');
+  const processedReminder = await processNotificationOutbox();
+  assert(processedReminder.sent >= 1, 'reminder reservasi terkirim');
+
+  /* ------------------- Membership: voucher, poin, saldo ---------------- */
+  const [cafe8] = await db
+    .select()
+    .from(schema.venueTables)
+    .where(eq(schema.venueTables.code, 'C8'))
+    .limit(1);
+  assert(cafe8, 'meja C8 tersedia');
+  const memberBill = await openCafeBill(cafe8.id, cashier.id, 'Member Benefit Guest');
+  await placeOrder({
+    actor: { type: 'staff', id: cashier.id, role: 'cashier' },
+    tableId: cafe8.id,
+    idempotencyKey: crypto.randomUUID(),
+    items: [{ menuItemId: wings.id, qty: 1 }],
+  });
+  await attachMemberToBill(cashier.id, memberBill.billId, loyaltyMember.id);
+  const voucher = await issueVoucher(cashier.id, {
+    memberId: loyaltyMember.id,
+    name: 'Integration Voucher',
+    type: 'fixed',
+    value: 10_000,
+    minSpend: 0,
+  });
+  const voucherResult = await applyVoucherToBill(cashier.id, memberBill.billId, voucher.code);
+  assert(voucherResult.discount === 10_000, 'voucher member diterapkan');
+  const topUp = await topUpMemberBalance(cashier.id, {
+    memberId: loyaltyMember.id,
+    amount: 200_000,
+    method: 'cash',
+    note: 'Integration topup',
+  });
+  assert(topUp.balance >= 200_000, 'top up saldo member tersimpan');
+  const pointsResult = await redeemMemberPoints(cashier.id, memberBill.billId, 10);
+  assert(pointsResult.points === 10, 'poin member ditukar');
+  const [memberBillRow] = await db
+    .select()
+    .from(schema.bills)
+    .where(eq(schema.bills.id, memberBill.billId))
+    .limit(1);
+  assert(memberBillRow, 'bill member tersedia');
+  await payBill(memberBill.billId, cashier.id, [
+    { method: 'balance', amount: memberBillRow.total },
+  ]);
+  const [memberAfterBalance] = await db
+    .select()
+    .from(schema.members)
+    .where(eq(schema.members.id, loyaltyMember.id))
+    .limit(1);
+  assert(
+    (memberAfterBalance?.balance ?? 0) < topUp.balance,
+    'saldo member terpotong saat pembayaran',
+  );
+
+  /* --------------------- Promotion stacking & bundle ------------------- */
+  await db
+    .update(schema.promotions)
+    .set({ active: false })
+    .where(eq(schema.promotions.autoApply, true));
+  await savePromotion(owner.id, {
+    code: 'INTEG10',
+    name: 'Integration 10%',
+    type: 'percent',
+    value: 1000,
+    minSpend: 0,
+    appliesTo: 'all',
+    stackable: true,
+    active: true,
+  });
+  await savePromotion(owner.id, {
+    code: 'INTEG5K',
+    name: 'Integration 5k',
+    type: 'fixed',
+    value: 5_000,
+    minSpend: 0,
+    appliesTo: 'all',
+    stackable: true,
+    active: true,
+  });
+  const [cafe9] = await db
+    .select()
+    .from(schema.venueTables)
+    .where(eq(schema.venueTables.code, 'C9'))
+    .limit(1);
+  assert(cafe9, 'meja C9 tersedia');
+  const promoBill = await openCafeBill(cafe9.id, cashier.id, 'Promo Stack Guest');
+  await placeOrder({
+    actor: { type: 'staff', id: cashier.id, role: 'cashier' },
+    tableId: cafe9.id,
+    idempotencyKey: crypto.randomUUID(),
+    items: [{ menuItemId: wings.id, qty: 1 }],
+  });
+  const promoA = await applyPromotionToBill(cashier.id, promoBill.billId, 'INTEG10');
+  const promoB = await applyPromotionToBill(cashier.id, promoBill.billId, 'INTEG5K');
+  assert(promoA.discount > 0 && promoB.discount === 5_000, 'dua promo stackable diterapkan');
+  const [promoBillRow] = await db
+    .select()
+    .from(schema.bills)
+    .where(eq(schema.bills.id, promoBill.billId))
+    .limit(1);
+  assert(
+    promoBillRow?.promoDiscountAmount === promoA.discount + 5_000,
+    'total diskon stacking benar',
+  );
+  await voidBill(promoBill.billId, owner.id, 'Integration cleanup promo');
+
+  const [water] = await db
+    .select()
+    .from(schema.menuItems)
+    .where(eq(schema.menuItems.name, 'Mineral Water'))
+    .limit(1);
+  assert(water, 'menu mineral water tersedia');
+  await savePromotion(owner.id, {
+    code: 'INTEGBUNDLE',
+    name: 'Integration Bundle',
+    type: 'bundle',
+    value: 0,
+    minSpend: 0,
+    appliesTo: 'fnb',
+    bundlePrice: 40_000,
+    bundleItemIds: [wings.id, water.id],
+    active: true,
+  });
+  const [cafe10] = await db
+    .select()
+    .from(schema.venueTables)
+    .where(eq(schema.venueTables.code, 'C10'))
+    .limit(1);
+  assert(cafe10, 'meja C10 tersedia');
+  const bundleBill = await openCafeBill(cafe10.id, cashier.id, 'Bundle Guest');
+  await placeOrder({
+    actor: { type: 'staff', id: cashier.id, role: 'cashier' },
+    tableId: cafe10.id,
+    idempotencyKey: crypto.randomUUID(),
+    items: [
+      { menuItemId: wings.id, qty: 1 },
+      { menuItemId: water.id, qty: 1 },
+    ],
+  });
+  const bundleResult = await applyPromotionToBill(cashier.id, bundleBill.billId, 'INTEGBUNDLE');
+  assert(bundleResult.discount === 13_000, 'bundle menghitung selisih harga paket');
+  await voidBill(bundleBill.billId, owner.id, 'Integration cleanup bundle');
+
+  /* ----------------------- Overtime & no-show -------------------------- */
+  await savePenaltyRule(owner.id, {
+    name: 'Integration Overtime',
+    type: 'overtime',
+    defaultAmount: 0,
+    graceMinutes: 10,
+    ratePerHour: 50_000,
+    autoApply: true,
+    active: true,
+  });
+  const [b3] = await db
+    .select()
+    .from(schema.venueTables)
+    .where(eq(schema.venueTables.code, 'B3'))
+    .limit(1);
+  assert(b3, 'meja B3 tersedia');
+  const overtimeStart = await startBilliardSession(b3.id, cashier.id, 'Overtime Guest', 15);
+  await db
+    .update(schema.billiardSessions)
+    .set({ startedAt: new Date(Date.now() - 40 * 60_000) })
+    .where(eq(schema.billiardSessions.id, overtimeStart.sessionId));
+  const overtimeStop = await stopBilliardSession(b3.id, cashier.id);
+  assert(overtimeStop.overtimePenalty > 0, 'denda overtime otomatis dibuat');
+  await payBill(overtimeStart.billId, cashier.id, [
+    { method: 'cash', amount: overtimeStop.billTotal, tendered: overtimeStop.billTotal },
+  ]);
+
+  const noShowReservation = await createReservation(cashier.id, {
+    tableId: b3.id,
+    guestName: 'No Show Guest',
+    phone: '081255554444',
+    partySize: 2,
+    date: soonDate,
+    startTime: soonTime,
+    durationMinutes: 60,
+    depositAmount: 50_000,
+  });
+  await setReservationDeposit(cashier.id, noShowReservation.id, 'paid');
+  const noShow = await setReservationStatus(cashier.id, noShowReservation.id, 'no_show');
+  assert(noShow.depositStatus === 'forfeited', 'deposit no-show di-forfeit');
+  const [noShowPenalty] = await db
+    .select()
+    .from(schema.penalties)
+    .where(eq(schema.penalties.reservationId, noShowReservation.id))
+    .limit(1);
+  assert(noShowPenalty?.amount === 50_000, 'penalti no-show tercatat');
+
+  /* ------------------------- Split QRIS gateway ------------------------ */
+  const [b7] = await db
+    .select()
+    .from(schema.venueTables)
+    .where(eq(schema.venueTables.code, 'B7'))
+    .limit(1);
+  assert(b7, 'meja B7 tersedia');
+  const splitQrisStart = await startBilliardSession(b7.id, cashier.id, 'Split QRIS Guest');
+  const splitQrisOrder = await placeOrder({
+    actor: { type: 'staff', id: cashier.id, role: 'cashier' },
+    tableId: b7.id,
+    idempotencyKey: crypto.randomUUID(),
+    items: [{ menuItemId: wings.id, qty: 1 }],
+  });
+  await stopBilliardSession(b7.id, cashier.id);
+  const [splitQrisItem] = await db
+    .select()
+    .from(schema.orderItems)
+    .where(eq(schema.orderItems.orderId, splitQrisOrder.orderId))
+    .limit(1);
+  assert(splitQrisItem, 'item split QRIS tersedia');
+  const splitQris = await createBillSplits(cashier.id, splitQrisStart.billId, [
+    { label: 'QR Group', itemIds: [], sessionIds: [splitQrisStart.sessionId] },
+    { label: 'Cash Group', itemIds: [splitQrisItem.id], sessionIds: [] },
+  ]);
+  const splitQrIntent = await createBillSplitQrisIntent(cashier.id, splitQris.splits[0].id);
+  const splitQrPaid = await simulateMockIntentPaid(cashier.id, splitQrIntent.intentId);
+  assert(
+    (splitQrPaid as { billClosed?: boolean }).billClosed === false,
+    'split QRIS hanya menutup group pertama',
+  );
+  const splitCashPaid = await payBillSplit(cashier.id, splitQris.splits[1].id, [
+    { method: 'cash', amount: splitQris.splits[1].total },
+  ]);
+  assert(splitCashPaid.billClosed === true, 'bill lunas setelah semua group dibayar');
+
+  /* ---------------------------- Print queue ---------------------------- */
+  const queuedPrintJobs = await claimPrintJobs('integration-agent', 20);
+  assert(queuedPrintJobs.length > 0, 'print job struk/kitchen masuk antrean');
+  await completePrintJob(queuedPrintJobs[0].id, 'integration-agent', true);
+  const [printedJob] = await db
+    .select()
+    .from(schema.printJobs)
+    .where(eq(schema.printJobs.id, queuedPrintJobs[0].id))
+    .limit(1);
+  assert(printedJob?.status === 'printed', 'print job ditandai printed');
+
+  /* --------------------------- Multi-outlet ---------------------------- */
+  const secondOutlet = await saveOutlet(owner.id, {
+    code: 'CAB2',
+    name: 'Cue & Tap Cabang 2',
+    address: 'Bandung',
+  });
+  process.env.CUETAP_OUTLET_ID = secondOutlet.id;
+  const [outletRate] = await db
+    .select()
+    .from(schema.billiardRates)
+    .where(eq(schema.billiardRates.outletId, secondOutlet.id))
+    .limit(1);
+  assert(outletRate, 'outlet baru mendapat rate default');
+  await saveTable(owner.id, {
+    code: 'X1',
+    kind: 'billiard',
+    zone: 'Test Outlet',
+    capacity: 4,
+    allowSelfOrder: false,
+    rateId: outletRate.id,
+    sortOrder: 1,
+  });
+  const outletCashier = await getCashierData();
+  assert(outletCashier.tables.length === 1, 'meja outlet baru ter-scope');
+  assert(outletCashier.menuItems.length === 0, 'menu outlet baru tidak bercampur');
+  delete process.env.CUETAP_OUTLET_ID;
 
   console.log('INTEGRATION PASS', {
     shift: shift.shiftId,

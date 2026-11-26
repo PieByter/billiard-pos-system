@@ -19,7 +19,7 @@ const groupSchema = z.object({
 });
 
 const splitPaymentSchema = z.object({
-  method: z.enum(['cash', 'qris', 'transfer', 'edc']),
+  method: z.enum(['cash', 'qris', 'transfer', 'edc', 'balance']),
   amount: z.coerce.number().int().min(1).max(1_000_000_000),
   tendered: z.coerce.number().int().min(0).max(1_000_000_000).optional(),
 });
@@ -57,7 +57,11 @@ export async function resetBillSplitsAction(
 
 export async function payBillSplitAction(
   splitId: string,
-  payments: Array<{ method: 'cash' | 'qris' | 'transfer' | 'edc'; amount: number; tendered?: number }>,
+  payments: Array<{
+    method: 'cash' | 'qris' | 'transfer' | 'edc' | 'balance';
+    amount: number;
+    tendered?: number;
+  }>,
 ): Promise<ActionResult<Awaited<ReturnType<typeof payBillSplit>>>> {
   return runAction(async () => {
     const staff = await requireStaffAction(['cashier', 'owner']);

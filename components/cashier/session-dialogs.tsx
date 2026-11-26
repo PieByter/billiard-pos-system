@@ -32,6 +32,7 @@ export function StartSessionDialog({
 }) {
   const router = useRouter();
   const [guestName, setGuestName] = useState('');
+  const [targetMinutes, setTargetMinutes] = useState(60);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{
@@ -43,6 +44,7 @@ export function StartSessionDialog({
   useEffect(() => {
     if (open) {
       setGuestName('');
+      setTargetMinutes(60);
       setError(null);
       setLoading(false);
     }
@@ -78,7 +80,11 @@ export function StartSessionDialog({
     if (!table) return;
     setLoading(true);
     setError(null);
-    const result = await startSessionAction(table.id, guestName || null);
+    const result = await startSessionAction(
+      table.id,
+      guestName || null,
+      targetMinutes > 0 ? targetMinutes : null,
+    );
     if (!result.ok) {
       setError(result.error);
       setLoading(false);
@@ -160,6 +166,22 @@ export function StartSessionDialog({
             leading={<Icon name="person" className="text-[18px]" />}
             hint="Opsional"
           />
+
+          <Input
+            id="target-minutes"
+            label="Target durasi (menit)"
+            type="number"
+            min={0}
+            max={720}
+            value={targetMinutes}
+            onChange={(event) => setTargetMinutes(Math.max(0, Number(event.target.value) || 0))}
+            leading={<Icon name="timer" className="text-[18px]" />}
+            hint="0 = tanpa target"
+          />
+          <p className="-mt-2 text-[10px] text-on-surface-variant">
+            Jika diisi, denda overtime otomatis dihitung saat sesi dihentikan (sesuai aturan
+            overtime yang aktif).
+          </p>
 
           {activeRate ? (
             <div className="rounded-xl border border-primary/20 bg-primary/[0.06] p-3">

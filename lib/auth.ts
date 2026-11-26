@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { compareSync } from 'bcryptjs';
 import { createServerClient } from '@supabase/ssr';
 import { eq, sql } from 'drizzle-orm';
+import { ACTIVE_OUTLET_COOKIE } from './constants';
 import { getDb } from './db';
 import { profiles, type ProfileRole, type StaffProfile } from './db/schema';
 import { AppError } from './errors';
@@ -207,6 +208,14 @@ export async function signInWithEmail(emailRaw: string, password: string): Promi
         error: 'Akun ini belum terdaftar sebagai staff Cue & Tap. Hubungi owner.',
       };
     }
+    const cookieStore = await cookies();
+    cookieStore.set(ACTIVE_OUTLET_COOKIE, profile.outletId, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 30,
+    });
     return { ok: true, role: profile.role, redirectTo: homeForRole(profile.role) };
   }
 
@@ -233,6 +242,13 @@ export async function signInWithEmail(emailRaw: string, password: string): Promi
     secure: process.env.NODE_ENV === 'production',
     path: '/',
     maxAge: SESSION_TTL_SECONDS,
+  });
+  cookieStore.set(ACTIVE_OUTLET_COOKIE, profile.outletId, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 30,
   });
 
   return { ok: true, role: profile.role, redirectTo: homeForRole(profile.role) };

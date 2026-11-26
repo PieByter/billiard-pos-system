@@ -1,7 +1,8 @@
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import { dbNow, getDb } from '@/lib/db';
 import { assets, maintenanceLogs, venueTables } from '@/lib/db/schema';
 import { AppError, isUniqueViolation } from '@/lib/errors';
+import { getActiveOutletId } from '@/lib/outlet';
 import { audit } from './audit';
 
 export type AssetInput = {
@@ -21,6 +22,7 @@ export async function saveAsset(staffId: string, input: AssetInput) {
     throw new AppError('INVALID_CODE', 'Kode aset 2–24 karakter huruf/angka/dash.');
   }
   if (name.length < 2) throw new AppError('INVALID_NAME', 'Nama aset wajib diisi.');
+  const outletId = await getActiveOutletId();
   const db = await getDb();
   try {
     return await db.transaction(async (tx) => {
@@ -37,7 +39,7 @@ export async function saveAsset(staffId: string, input: AssetInput) {
           notes: input.notes?.trim() || null,
           updatedAt: now,
         })
-        .where(eq(assets.id, input.id))
+        .where(and(eq(assets.id, input.id), eq(assets.outletId, outletId)))
         .returning();
       if (!updated) throw new AppError('ASSET_NOT_FOUND', 'Aset tidak ditemukan.');
       await audit(tx, {
@@ -53,6 +55,7 @@ export async function saveAsset(staffId: string, input: AssetInput) {
     const [created] = await tx
       .insert(assets)
       .values({
+        outletId,
         code,
         name,
         type: input.type,
@@ -100,6 +103,7 @@ export async function logMaintenance(
     const [log] = await tx
       .insert(maintenanceLogs)
       .values({
+        outletId: asset.outletId,
         assetId: input.assetId,
         type: input.type,
         performedAt: now,
@@ -126,19 +130,26 @@ export async function logMaintenance(
 export async function getMaintenanceData() {
   const db = await getDb();
   const serverNow = await dbNow(db);
+  const outletId = await getActiveOutletId();
   const [assetRows, logRows, tableRows] = await Promise.all([
     db
       .select({ asset: assets, tableCode: venueTables.code })
       .from(assets)
       .leftJoin(venueTables, eq(assets.tableId, venueTables.id))
+      .where(eq(assets.outletId, outletId))
       .orderBy(asc(assets.code)),
     db
       .select({ log: maintenanceLogs, asset: assets })
       .from(maintenanceLogs)
       .innerJoin(assets, eq(maintenanceLogs.assetId, assets.id))
+      .where(eq(maintenanceLogs.outletId, outletId))
       .orderBy(desc(maintenanceLogs.performedAt))
       .limit(50),
-    db.select().from(venueTables).orderBy(asc(venueTables.code)),
+    db
+      .select()
+      .from(venueTables)
+      .where(eq(venueTables.outletId, outletId))
+      .orderBy(asc(venueTables.code)),
   ]);
   return {
     serverNow: serverNow.toISOString(),

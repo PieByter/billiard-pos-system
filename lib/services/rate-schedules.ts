@@ -178,6 +178,7 @@ export async function saveRateSchedule(staffId: string, input: RateScheduleInput
     if (!rate) throw new AppError('RATE_NOT_FOUND', 'Tarif aktif tidak ditemukan.');
 
     const values = {
+      outletId: table.outletId,
       tableId: input.tableId,
       rateId: input.rateId,
       daysOfWeek: days,

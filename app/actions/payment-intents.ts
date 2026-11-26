@@ -7,6 +7,7 @@ import { revalidateOps } from '@/lib/revalidate';
 import { parseOrThrow } from '@/lib/validate';
 import {
   createBillQrisIntent,
+  createBillSplitQrisIntent,
   getQrisIntentStatus,
   simulateMockIntentPaid,
 } from '@/lib/services/payment-intents';
@@ -18,6 +19,18 @@ export async function createQrisIntentAction(
     const staff = await requireStaffAction(['cashier', 'owner']);
     const data = parseOrThrow(z.string().uuid(), billId);
     const result = await createBillQrisIntent(staff.id, data);
+    revalidateOps();
+    return result;
+  });
+}
+
+export async function createSplitQrisIntentAction(
+  splitId: string,
+): Promise<ActionResult<Awaited<ReturnType<typeof createBillSplitQrisIntent>>>> {
+  return runAction(async () => {
+    const staff = await requireStaffAction(['cashier', 'owner']);
+    const data = parseOrThrow(z.string().uuid(), splitId);
+    const result = await createBillSplitQrisIntent(staff.id, data);
     revalidateOps();
     return result;
   });

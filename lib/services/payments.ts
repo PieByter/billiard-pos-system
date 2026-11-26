@@ -5,6 +5,7 @@ import {
   bills,
   orders,
   payments,
+  penalties,
   venueTables,
 } from '@/lib/db/schema';
 import { AppError } from '@/lib/errors';
@@ -12,11 +13,12 @@ import type { PaymentInput } from '@/lib/types';
 import { recalcBillTotals, restoreOrderStock } from './bill';
 import { audit } from './audit';
 import { hasBillSplits } from './splits';
-import { awardMembershipForBill } from './membership';
+import { awardMembershipForBill, consumeMemberBalance, restoreMemberBenefitsForBill } from './membership';
 import { consumePromotionForBill } from './promotions';
 import { enqueueReceiptForBill } from './notifications';
+import { enqueueBillPrintJob } from './printing';
 
-const VALID_METHODS = new Set(['cash', 'qris', 'transfer', 'edc']);
+const VALID_METHODS = new Set(['cash', 'qris', 'transfer', 'edc', 'balance']);
 
 function normalizePayments(input: PaymentInput[]): PaymentInput[] {
   return input
@@ -92,8 +94,16 @@ export async function payBill(
       );
     }
 
+    const balanceAmount = paymentRows
+      .filter((payment) => payment.method === 'balance')
+      .reduce((sum, payment) => sum + payment.amount, 0);
+    if (balanceAmount > 0) {
+      await consumeMemberBalance(tx, bill, balanceAmount, staffId, now);
+    }
+
     await tx.insert(payments).values(
       paymentRows.map((payment) => ({
+        outletId: bill.outletId,
         billId,
         method: payment.method,
         amount: payment.amount,
@@ -128,6 +138,7 @@ export async function payBill(
     await awardMembershipForBill(tx, billId, staffId);
     await consumePromotionForBill(tx, billId, staffId);
     await enqueueReceiptForBill(tx, billId);
+    await enqueueBillPrintJob(tx, billId, { type: 'receipt', createdBy: staffId });
 
     const cashTendered = paymentRows.reduce(
       (sum, payment) =>
@@ -247,6 +258,7 @@ export async function voidBill(billId: string, staffId: string, reason: string) 
       );
     }
 
+    await restoreMemberBenefitsForBill(tx, billId, staffId);
     const orderRows = await tx
       .select()
       .from(orders)
@@ -258,6 +270,10 @@ export async function voidBill(billId: string, staffId: string, reason: string) 
       .update(orders)
       .set({ status: 'cancelled', cancelledAt: now, approvedBy: staffId })
       .where(and(eq(orders.billId, billId), ne(orders.status, 'cancelled')));
+    await tx
+      .update(penalties)
+      .set({ status: 'cancelled' })
+      .where(and(eq(penalties.billId, billId), eq(penalties.status, 'approved')));
     await tx
       .update(bills)
       .set({

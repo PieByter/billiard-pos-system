@@ -58,6 +58,14 @@ const METHODS: Array<{
     description: 'Transfer bank manual',
     className: 'border-outline-variant/50 bg-surface-container-high text-on-surface',
   },
+  {
+    value: 'balance',
+    label: 'Saldo Member',
+    short: 'Saldo',
+    icon: 'account_balance_wallet',
+    description: 'Potong deposit member',
+    className: 'border-tertiary/40 bg-tertiary/10 text-tertiary',
+  },
 ];
 
 type SplitRow = { id: string; method: PayMethod; amount: number };
@@ -89,6 +97,9 @@ export function PaymentDialog({
   const total = totalOverride ?? bill?.total ?? 0;
   const billNumber = billNumberOverride ?? bill?.number ?? '';
   const activeSession = bill?.activeSession && totalOverride === undefined;
+  const availableMethods = bill?.memberId
+    ? METHODS
+    : METHODS.filter((entry) => entry.value !== 'balance');
 
   const [method, setMethod] = useState<PayMethod>(defaultMethod);
   const [split, setSplit] = useState(defaultSplit);
@@ -253,7 +264,7 @@ export function PaymentDialog({
 
         {!split ? (
           <div className="grid grid-cols-2 gap-2">
-            {METHODS.map((entry) => (
+            {availableMethods.map((entry) => (
               <button
                 key={entry.value}
                 type="button"
@@ -295,7 +306,7 @@ export function PaymentDialog({
                   }
                   className={cn(inputClass, 'h-9 text-body-sm')}
                 >
-                  {METHODS.map((entry) => (
+                  {availableMethods.map((entry) => (
                     <option key={entry.value} value={entry.value}>
                       {entry.label}
                     </option>

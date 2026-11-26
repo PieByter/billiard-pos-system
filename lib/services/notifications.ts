@@ -1,16 +1,103 @@
-import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm';
 import { dbNow, getDb, type DbTransaction } from '@/lib/db';
 import {
   bills,
   members,
   notificationOutbox,
+  notificationTemplates,
   orders,
+  reservations,
   venueTables,
+  type Member,
 } from '@/lib/db/schema';
 import { formatRp } from '@/lib/billing';
 import { getNotificationConfig, deliverNotification, type NotificationChannel } from '@/lib/notifications/provider';
-import type { NotificationsData } from '@/lib/types';
+import { getActiveOutletId } from '@/lib/outlet';
+import type { NotificationTemplateView, NotificationsData } from '@/lib/types';
 import { audit } from './audit';
+
+type TemplateKey = NotificationTemplateView['templateKey'];
+
+type TemplateDefinition = {
+  name: string;
+  subject: string;
+  body: string;
+};
+
+const DEFAULT_TEMPLATES: Record<TemplateKey, TemplateDefinition> = {
+  receipt: {
+    name: 'E-receipt bill',
+    subject: 'Struk {{billNumber}} · Cue & Tap',
+    body: [
+      'Halo {{memberName}}, terima kasih sudah bermain di Cue & Tap.',
+      '',
+      'Bill: {{billNumber}}',
+      'Meja: {{tableCode}}',
+      'Total: {{total}}',
+      'Status: LUNAS',
+      '',
+      'Simpan pesan ini sebagai bukti pembayaran.',
+    ].join('\n'),
+  },
+  order_ready: {
+    name: 'Order siap',
+    subject: 'Pesanan {{orderNumber}} siap · Cue & Tap',
+    body: 'Halo {{memberName}}, pesanan {{orderNumber}} di meja {{tableCode}} sudah siap diantar.',
+  },
+  reservation: {
+    name: 'Konfirmasi reservasi',
+    subject: 'Reservasi {{reservationCode}} · Cue & Tap',
+    body: 'Halo {{guestName}}, reservasi {{reservationCode}} di meja {{tableCode}} pada {{startAt}} sudah dikonfirmasi.',
+  },
+  reservation_reminder: {
+    name: 'Reminder reservasi',
+    subject: 'Reminder reservasi {{reservationCode}} · Cue & Tap',
+    body: 'Halo {{guestName}}, reservasi {{reservationCode}} di meja {{tableCode}} dimulai {{startAt}}. Sampai jumpa!',
+  },
+  test: {
+    name: 'Test notifikasi',
+    subject: 'Test notifikasi Cue & Tap',
+    body: 'Halo {{memberName}}, ini pesan test dari Cue & Tap.',
+  },
+};
+
+export function renderNotificationTemplate(
+  body: string,
+  variables: Record<string, string | number | null | undefined>,
+): string {
+  return body.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => {
+    const value = variables[key];
+    return value === null || value === undefined ? '' : String(value);
+  });
+}
+
+async function getTemplate(
+  tx: DbTransaction,
+  outletId: string,
+  templateKey: TemplateKey,
+): Promise<{
+  subject: string;
+  body: string;
+  channel: NotificationChannel | null;
+}> {
+  const [row] = await tx
+    .select()
+    .from(notificationTemplates)
+    .where(
+      and(
+        eq(notificationTemplates.outletId, outletId),
+        eq(notificationTemplates.templateKey, templateKey),
+        eq(notificationTemplates.active, true),
+      ),
+    )
+    .limit(1);
+  const fallback = DEFAULT_TEMPLATES[templateKey];
+  return {
+    subject: row?.subject ?? fallback.subject,
+    body: row?.body ?? fallback.body,
+    channel: row?.channel ?? null,
+  };
+}
 
 async function receiptRecipient(tx: DbTransaction, billId: string) {
   const [row] = await tx
@@ -30,10 +117,17 @@ async function receiptRecipient(tx: DbTransaction, billId: string) {
 function chooseChannel(
   email: string | null | undefined,
   phone: string | null | undefined,
+  member?: Member | null,
+  preferred?: NotificationChannel | null,
 ): NotificationChannel {
   const config = getNotificationConfig();
-  if (config.emailEnabled && email) return 'email';
-  if (config.whatsappEnabled && phone) return 'whatsapp';
+  const emailAllowed = Boolean(email) && member?.notifyEmail !== false;
+  const phoneAllowed = Boolean(phone) && member?.notifyWhatsapp !== false;
+  if (preferred === 'email' && config.emailEnabled && emailAllowed) return 'email';
+  if (preferred === 'whatsapp' && config.whatsappEnabled && phoneAllowed) return 'whatsapp';
+  if (preferred === 'log') return 'log';
+  if (config.emailEnabled && emailAllowed) return 'email';
+  if (config.whatsappEnabled && phoneAllowed) return 'whatsapp';
   return 'log';
 }
 
@@ -50,26 +144,29 @@ export async function enqueueReceiptForBill(tx: DbTransaction, billId: string) {
     .limit(1);
   if (existing) return null;
 
-  const channel = chooseChannel(email, phone);
+  const template = await getTemplate(tx, row.bill.outletId, 'receipt');
+  const channel = chooseChannel(email, phone, row.member, template.channel);
+  if (channel === 'email' && !row.member.notifyEmail) return null;
+  if (channel === 'whatsapp' && !row.member.notifyWhatsapp) return null;
   const recipient = channel === 'email' ? email! : phone!;
-  const body = [
-    `Halo ${row.member.name}, terima kasih sudah bermain di Cue & Tap.`,
-    '',
-    `Bill: ${row.bill.billNumber}`,
-    `Meja: ${row.tableCode}`,
-    `Total: ${formatRp(row.bill.total)}`,
-    `Status: LUNAS`,
-    '',
-    'Simpan pesan ini sebagai bukti pembayaran.',
-  ].join('\n');
+  const variables = {
+    memberName: row.member.name,
+    billNumber: row.bill.billNumber,
+    tableCode: row.tableCode,
+    total: formatRp(row.bill.total),
+    status: 'LUNAS',
+  };
+  const body = renderNotificationTemplate(template.body, variables);
   const now = await dbNow(tx);
   const [created] = await tx
     .insert(notificationOutbox)
     .values({
+      outletId: row.bill.outletId,
       channel,
       type: 'receipt',
+      templateKey: 'receipt',
       recipient,
-      subject: `Struk ${row.bill.billNumber} · Cue & Tap`,
+      subject: renderNotificationTemplate(template.subject, variables),
       body,
       billId,
       memberId: row.member.id,
@@ -119,17 +216,27 @@ export async function enqueueOrderReadyNotification(tx: DbTransaction, orderId: 
     .limit(1);
   if (existing) return null;
 
-  const channel = chooseChannel(email, phone);
+  const template = await getTemplate(tx, row.bill.outletId, 'order_ready');
+  const channel = chooseChannel(email, phone, row.member, template.channel);
+  if (channel === 'email' && !row.member.notifyEmail) return null;
+  if (channel === 'whatsapp' && !row.member.notifyWhatsapp) return null;
   const recipient = channel === 'email' ? email! : phone!;
+  const variables = {
+    memberName: row.member.name,
+    orderNumber: row.order.orderNumber,
+    tableCode: row.tableCode,
+  };
   const now = await dbNow(tx);
   const [created] = await tx
     .insert(notificationOutbox)
     .values({
+      outletId: row.bill.outletId,
       channel,
       type: 'order_ready',
+      templateKey: 'order_ready',
       recipient,
-      subject: `Pesanan ${row.order.orderNumber} siap · Cue & Tap`,
-      body: `Halo ${row.member.name}, pesanan ${row.order.orderNumber} di meja ${row.tableCode} sudah siap diantar.`,
+      subject: renderNotificationTemplate(template.subject, variables),
+      body: renderNotificationTemplate(template.body, variables),
       orderId,
       billId: row.bill.id,
       memberId: row.member.id,
@@ -216,9 +323,151 @@ export async function retryNotification(notificationId: string) {
   return { id: updated?.id ?? notificationId };
 }
 
+export async function saveNotificationTemplate(
+  staffId: string,
+  input: {
+    templateKey: TemplateKey;
+    name: string;
+    channel?: NotificationChannel | null;
+    subject?: string | null;
+    body: string;
+    active?: boolean;
+  },
+) {
+  const name = input.name.trim();
+  const body = input.body.trim();
+  if (name.length < 2) throw new Error('Nama template wajib diisi.');
+  if (body.length < 5) throw new Error('Isi template terlalu pendek.');
+  const outletId = await getActiveOutletId();
+  const db = await getDb();
+  return db.transaction(async (tx) => {
+    const now = await dbNow(tx);
+    const [saved] = await tx
+      .insert(notificationTemplates)
+      .values({
+        outletId,
+        templateKey: input.templateKey,
+        name,
+        channel: input.channel ?? null,
+        subject: input.subject?.trim() || null,
+        body,
+        active: input.active ?? true,
+        updatedBy: staffId,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [notificationTemplates.outletId, notificationTemplates.templateKey],
+        set: {
+          name,
+          channel: input.channel ?? null,
+          subject: input.subject?.trim() || null,
+          body,
+          active: input.active ?? true,
+          updatedBy: staffId,
+          updatedAt: now,
+        },
+      })
+      .returning();
+    await audit(tx, {
+      staffId,
+      action: 'notification_template.saved',
+      entityType: 'notification_template',
+      entityId: saved.id,
+      detail: { templateKey: input.templateKey, channel: input.channel ?? null },
+      at: now,
+    });
+    return { id: saved.id };
+  });
+}
+
+export async function enqueueReservationReminder(reservationId: string) {
+  const db = await getDb();
+  return db.transaction(async (tx) => {
+    const now = await dbNow(tx);
+    const [row] = await tx
+      .select({ reservation: reservations, tableCode: venueTables.code })
+      .from(reservations)
+      .innerJoin(venueTables, eq(reservations.tableId, venueTables.id))
+      .where(eq(reservations.id, reservationId))
+      .limit(1);
+    if (!row) return null;
+    if (!['pending', 'confirmed'].includes(row.reservation.status)) return null;
+    if (!row.reservation.phone) return null;
+    if (row.reservation.startAt < now) return null;
+    if (row.reservation.startAt.getTime() > now.getTime() + 24 * 60 * 60_000) return null;
+    const [existing] = await tx
+      .select({ id: notificationOutbox.id })
+      .from(notificationOutbox)
+      .where(
+        and(
+          eq(notificationOutbox.type, 'reservation_reminder'),
+          sql`${notificationOutbox.metadata}->>'reservationId' = ${row.reservation.id}`,
+        ),
+      )
+      .limit(1);
+    if (existing) return null;
+
+    const template = await getTemplate(tx, row.reservation.outletId, 'reservation_reminder');
+    const channel = chooseChannel(null, row.reservation.phone, null, template.channel);
+    const startAt = new Intl.DateTimeFormat('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      dateStyle: 'full',
+      timeStyle: 'short',
+    }).format(row.reservation.startAt);
+    const variables = {
+      guestName: row.reservation.guestName,
+      reservationCode: row.reservation.code,
+      tableCode: row.tableCode,
+      startAt,
+    };
+    const [created] = await tx
+      .insert(notificationOutbox)
+      .values({
+        outletId: row.reservation.outletId,
+        channel,
+        type: 'reservation_reminder',
+        templateKey: 'reservation_reminder',
+        recipient: row.reservation.phone,
+        subject: renderNotificationTemplate(template.subject, variables),
+        body: renderNotificationTemplate(template.body, variables),
+        metadata: { reservationId: row.reservation.id, code: row.reservation.code },
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+    return created;
+  });
+}
+
+export async function runNotificationCron() {
+  const db = await getDb();
+  const now = await dbNow(db);
+  const upcoming = await db
+    .select({ id: reservations.id })
+    .from(reservations)
+    .where(
+      and(
+        inArray(reservations.status, ['pending', 'confirmed']),
+        gte(reservations.startAt, now),
+        lte(reservations.startAt, new Date(now.getTime() + 24 * 60 * 60_000)),
+        sql`${reservations.phone} is not null`,
+      ),
+    )
+    .limit(100);
+  let reminders = 0;
+  for (const row of upcoming) {
+    const created = await enqueueReservationReminder(row.id);
+    if (created) reminders += 1;
+  }
+  const processed = await processNotificationOutbox(50);
+  return { reminders, ...processed };
+}
+
 export async function getNotificationsData(): Promise<NotificationsData> {
   const db = await getDb();
-  const [items, pending, sent, failed] = await Promise.all([
+  const outletId = await getActiveOutletId();
+  const [items, pending, sent, failed, templateRows] = await Promise.all([
     db
       .select({
         notification: notificationOutbox,
@@ -228,24 +477,58 @@ export async function getNotificationsData(): Promise<NotificationsData> {
       .from(notificationOutbox)
       .leftJoin(bills, eq(notificationOutbox.billId, bills.id))
       .leftJoin(orders, eq(notificationOutbox.orderId, orders.id))
+      .where(eq(notificationOutbox.outletId, outletId))
       .orderBy(desc(notificationOutbox.createdAt))
       .limit(100),
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(notificationOutbox)
-      .where(eq(notificationOutbox.status, 'pending')),
+      .where(and(eq(notificationOutbox.status, 'pending'), eq(notificationOutbox.outletId, outletId))),
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(notificationOutbox)
-      .where(eq(notificationOutbox.status, 'sent')),
+      .where(and(eq(notificationOutbox.status, 'sent'), eq(notificationOutbox.outletId, outletId))),
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(notificationOutbox)
-      .where(eq(notificationOutbox.status, 'failed')),
+      .where(and(eq(notificationOutbox.status, 'failed'), eq(notificationOutbox.outletId, outletId))),
+    db
+      .select()
+      .from(notificationTemplates)
+      .where(eq(notificationTemplates.outletId, outletId)),
   ]);
+  const templateByKey = new Map(templateRows.map((row) => [row.templateKey, row]));
+  const templates: NotificationTemplateView[] = (
+    Object.keys(DEFAULT_TEMPLATES) as TemplateKey[]
+  ).map((key) => {
+    const custom = templateByKey.get(key);
+    if (custom) {
+      return {
+        id: custom.id,
+        templateKey: key,
+        name: custom.name,
+        channel: custom.channel,
+        subject: custom.subject,
+        body: custom.body,
+        active: custom.active,
+        isDefault: false,
+      };
+    }
+    return {
+      id: null,
+      templateKey: key,
+      name: DEFAULT_TEMPLATES[key].name,
+      channel: null,
+      subject: DEFAULT_TEMPLATES[key].subject,
+      body: DEFAULT_TEMPLATES[key].body,
+      active: true,
+      isDefault: true,
+    };
+  });
 
   return {
     config: getNotificationConfig(),
+    templates,
     stats: {
       pending: pending[0]?.total ?? 0,
       sent: sent[0]?.total ?? 0,

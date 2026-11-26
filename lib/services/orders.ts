@@ -18,6 +18,7 @@ import { audit } from './audit';
 import { hasBillSplits } from './splits';
 import { enqueueOrderReadyNotification } from './notifications';
 import { consumeIngredientsForOrder } from './inventory';
+import { enqueueKitchenPrintJobs } from './printing';
 
 export type OrderActor =
   | { type: 'customer' }
@@ -115,6 +116,9 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         .where(and(eq(venueTables.id, input.tableId), eq(venueTables.active, true)))
         .limit(1);
       if (!table) throw new AppError('TABLE_NOT_FOUND', 'Meja tidak ditemukan.');
+      if (table.maintenanceAt) {
+        throw new AppError('TABLE_MAINTENANCE', 'Meja sedang dalam maintenance.');
+      }
       if (input.actor.type === 'customer' && !table.allowSelfOrder) {
         throw new AppError(
           'SELF_ORDER_DISABLED',
@@ -176,14 +180,11 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       if (await hasBillSplits(tx, bill.id)) {
         throw new AppError('BILL_SPLIT_LOCKED', 'Bill sudah di-split. Selesaikan pembayaran split.');
       }
-      if (bill.promotionId) {
-        throw new AppError('BILL_PROMO_LOCKED', 'Hapus promo sebelum menambah order baru.');
-      }
-
       const isCustomer = input.actor.type === 'customer';
       const [order] = await tx
         .insert(orders)
         .values({
+          outletId: bill.outletId,
           orderNumber: orderNumber(),
           billId: bill.id,
           tableId: table.id,
@@ -202,6 +203,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         items.map((line) => {
           const menuItem = menuById.get(line.menuItemId)!;
           return {
+            outletId: order.outletId,
             orderId: order.id,
             menuItemId: menuItem.id,
             nameSnapshot: menuItem.name,
@@ -213,6 +215,13 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
         }),
       );
       await consumeIngredientsForOrder(tx, order.id);
+      if (!isCustomer) {
+        await enqueueKitchenPrintJobs(
+          tx,
+          order.id,
+          input.actor.type === 'staff' ? input.actor.id : null,
+        );
+      }
 
       await recalcBillTotals(tx, bill.id, now);
       const orderTotal = items.reduce(
@@ -277,6 +286,7 @@ export async function approveOrder(orderId: string, staffId: string) {
       .where(and(eq(orders.id, orderId), eq(orders.status, 'pending')))
       .returning();
     if (!updated) throw new AppError('ORDER_STATE_CHANGED', 'Order sudah diproses kasir lain.');
+    await enqueueKitchenPrintJobs(tx, orderId, staffId);
     await recalcBillTotals(tx, order.billId, now);
     await audit(tx, {
       staffId,

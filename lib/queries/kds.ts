@@ -1,12 +1,14 @@
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { dbNow, getDb } from '@/lib/db';
 import { orderItems, orders, venueTables } from '@/lib/db/schema';
+import { getActiveOutletId } from '@/lib/outlet';
 import type { KdsData, KdsMetrics, KdsOrderView } from '@/lib/types';
 import { buildOrderView, startOfDayJakarta } from './shared';
 
 export async function getKdsData(): Promise<KdsData> {
   const db = await getDb();
   const serverNow = await dbNow(db);
+  const outletId = await getActiveOutletId();
 
   const rows = await db
     .select({
@@ -17,7 +19,12 @@ export async function getKdsData(): Promise<KdsData> {
     })
     .from(orders)
     .innerJoin(venueTables, eq(orders.tableId, venueTables.id))
-    .where(inArray(orders.status, ['accepted', 'preparing', 'ready']))
+    .where(
+      and(
+        inArray(orders.status, ['accepted', 'preparing', 'ready']),
+        eq(orders.outletId, outletId),
+      ),
+    )
     .orderBy(asc(orders.createdAt));
 
   const orderIds = rows.map((row) => row.order.id);
@@ -54,7 +61,10 @@ export async function getKdsData(): Promise<KdsData> {
     .select({ createdAt: orders.createdAt, servedAt: orders.servedAt })
     .from(orders)
     .where(
-      sql`${orders.servedAt} is not null and ${orders.servedAt} >= ${startOfDayJakarta(serverNow)}`,
+      and(
+        eq(orders.outletId, outletId),
+        sql`${orders.servedAt} is not null and ${orders.servedAt} >= ${startOfDayJakarta(serverNow)}`,
+      ),
     );
 
   const serveDurations = servedToday

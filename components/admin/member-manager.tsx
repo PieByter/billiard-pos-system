@@ -4,18 +4,26 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
+  issueVoucherAction,
   saveMemberAction,
   saveMemberTierAction,
+  topUpBalanceAction,
 } from '@/app/actions/membership';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { FormError, Input, Label, Textarea } from '@/components/ui/form';
+import { FormError, Input, Label, Select, Textarea } from '@/components/ui/form';
 import { Icon } from '@/components/ui/icon';
 import { Modal } from '@/components/ui/modal';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Switch } from '@/components/ui/switch';
 import { EmptyState, SectionHeader, StatCard } from '@/components/ui/stat-card';
-import { formatDate, formatRp, initials } from '@/lib/format';
-import type { MemberAdminData, MemberTierView, MemberView } from '@/lib/types';
+import { cn, formatDate, formatRp, initials } from '@/lib/format';
+import type {
+  MemberAdminData,
+  MemberTierView,
+  MemberView,
+  VoucherView,
+} from '@/lib/types';
 
 type MemberEditor = MemberView | 'new' | null;
 type TierEditor = MemberTierView | 'new' | null;
@@ -33,12 +41,28 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
   const [email, setEmail] = useState('');
   const [note, setNote] = useState('');
   const [consent, setConsent] = useState(false);
+  const [notifyEmail, setNotifyEmail] = useState(true);
+  const [notifyWhatsapp, setNotifyWhatsapp] = useState(true);
   const [active, setActive] = useState(true);
+
+  const [topUpMember, setTopUpMember] = useState<MemberView | null>(null);
+  const [topUpAmount, setTopUpAmount] = useState(100_000);
+  const [topUpMethod, setTopUpMethod] = useState<'cash' | 'qris' | 'transfer' | 'edc'>('cash');
+  const [topUpNote, setTopUpNote] = useState('');
+
+  const [voucherMember, setVoucherMember] = useState<MemberView | null>(null);
+  const [voucherName, setVoucherName] = useState('Voucher loyalitas');
+  const [voucherType, setVoucherType] = useState<'fixed' | 'percent'>('fixed');
+  const [voucherValue, setVoucherValue] = useState(50_000);
+  const [voucherMinSpend, setVoucherMinSpend] = useState(0);
+  const [voucherExpiry, setVoucherExpiry] = useState('');
+  const [voucherResult, setVoucherResult] = useState<string | null>(null);
 
   const [tierName, setTierName] = useState('');
   const [tierMinSpend, setTierMinSpend] = useState(0);
   const [tierDiscount, setTierDiscount] = useState(0);
   const [tierMultiplier, setTierMultiplier] = useState(100);
+  const [tierBenefits, setTierBenefits] = useState('');
   const [tierActive, setTierActive] = useState(true);
 
   const filtered = useMemo(() => {
@@ -57,6 +81,7 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
       active: data.members.filter((member) => member.active).length,
       points: data.members.reduce((sum, member) => sum + member.points, 0),
       spend: data.members.reduce((sum, member) => sum + member.totalSpend, 0),
+      balance: data.members.reduce((sum, member) => sum + member.balance, 0),
     }),
     [data.members],
   );
@@ -68,6 +93,8 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
     setEmail('');
     setNote('');
     setConsent(false);
+    setNotifyEmail(true);
+    setNotifyWhatsapp(true);
     setActive(true);
     setError(null);
   }
@@ -79,6 +106,8 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
     setEmail(member.email ?? '');
     setNote(member.note ?? '');
     setConsent(member.consent);
+    setNotifyEmail(member.notifyEmail);
+    setNotifyWhatsapp(member.notifyWhatsapp);
     setActive(member.active);
     setError(null);
   }
@@ -93,6 +122,8 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
       email: email || null,
       note: note || null,
       consent,
+      notifyEmail,
+      notifyWhatsapp,
       active,
     });
     setSaving(false);
@@ -111,6 +142,7 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
     setTierMinSpend(tier === 'new' ? 0 : tier.minSpend);
     setTierDiscount(tier === 'new' ? 0 : tier.discountBps);
     setTierMultiplier(tier === 'new' ? 100 : tier.pointsMultiplierBps);
+    setTierBenefits(tier === 'new' ? '' : tier.benefits ?? '');
     setTierActive(tier === 'new' ? true : tier.active);
     setError(null);
   }
@@ -124,6 +156,7 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
       minSpend: tierMinSpend,
       discountBps: tierDiscount,
       pointsMultiplierBps: tierMultiplier,
+      benefits: tierBenefits || null,
       active: tierActive,
     });
     setSaving(false);
@@ -133,6 +166,69 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
     }
     toast.success('Tier member disimpan');
     setTierEditor(null);
+    router.refresh();
+  }
+
+  function openTopUp(member: MemberView) {
+    setTopUpMember(member);
+    setTopUpAmount(100_000);
+    setTopUpMethod('cash');
+    setTopUpNote('');
+    setError(null);
+  }
+
+  async function submitTopUp() {
+    if (!topUpMember) return;
+    setSaving(true);
+    setError(null);
+    const result = await topUpBalanceAction({
+      memberId: topUpMember.id,
+      amount: topUpAmount,
+      method: topUpMethod,
+      note: topUpNote || null,
+    });
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    toast.success('Saldo member ditambah', {
+      description: `Saldo sekarang ${formatRp(result.data?.balance ?? 0)}`,
+    });
+    setTopUpMember(null);
+    router.refresh();
+  }
+
+  function openVoucher(member: MemberView) {
+    setVoucherMember(member);
+    setVoucherName('Voucher loyalitas');
+    setVoucherType('fixed');
+    setVoucherValue(50_000);
+    setVoucherMinSpend(0);
+    setVoucherExpiry('');
+    setVoucherResult(null);
+    setError(null);
+  }
+
+  async function submitVoucher() {
+    if (!voucherMember) return;
+    setSaving(true);
+    setError(null);
+    const result = await issueVoucherAction({
+      memberId: voucherMember.id,
+      name: voucherName,
+      type: voucherType,
+      value: voucherValue,
+      minSpend: voucherMinSpend,
+      expiresAt: voucherExpiry ? new Date(voucherExpiry).toISOString() : null,
+    });
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setVoucherResult(result.data?.code ?? null);
+    toast.success('Voucher dibuat', { description: result.data?.code });
     router.refresh();
   }
 
@@ -168,7 +264,7 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
         <StatCard label="Total member" value={stats.total} icon="groups" tone="primary" />
         <StatCard label="Member aktif" value={stats.active} icon="verified_user" tone="cyan" />
         <StatCard label="Total poin" value={stats.points.toLocaleString('id-ID')} icon="stars" tone="tertiary" />
-        <StatCard label="Total spend member" value={formatRp(stats.spend)} icon="trending_up" tone="neutral" />
+        <StatCard label="Total saldo" value={formatRp(stats.balance)} icon="account_balance_wallet" tone="neutral" />
       </section>
 
       <section className="panel flex flex-col gap-3 rounded-xl p-4">
@@ -193,6 +289,9 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
                 Diskon {(tier.discountBps / 100).toFixed(0)}% · poin ×
                 {(tier.pointsMultiplierBps / 10_000).toFixed(2)}
               </p>
+              {tier.benefits ? (
+                <p className="mt-1 line-clamp-2 text-[10px] text-tertiary">{tier.benefits}</p>
+              ) : null}
               <Button variant="ghost" size="sm" className="mt-1 px-0" onClick={() => openTier(tier)}>
                 <Icon name="edit" className="text-[15px]" />
                 Edit tier
@@ -229,25 +328,102 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
                     </p>
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => openEdit(member)}>
-                  <Icon name="edit" className="text-[16px]" />
-                  Edit
-                </Button>
+                <div className="flex flex-col items-end gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => openEdit(member)}>
+                    <Icon name="edit" className="text-[16px]" />
+                    Edit
+                  </Button>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => openTopUp(member)}>
+                      <Icon name="account_balance_wallet" className="text-[15px]" />
+                      Top up
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => openVoucher(member)}>
+                      <Icon name="confirmation_number" className="text-[15px]" />
+                      Voucher
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-outline-variant/20 pt-2.5 text-[11px]">
+              <div className="mt-3 grid grid-cols-3 gap-2 border-t border-outline-variant/20 pt-2.5 text-[11px]">
                 <div>
                   <span className="text-outline">Poin</span>
                   <p className="numeric font-bold text-primary">{member.points.toLocaleString('id-ID')}</p>
+                </div>
+                <div className="text-center">
+                  <span className="text-outline">Saldo</span>
+                  <p className="numeric font-bold text-on-surface">{formatRp(member.balance)}</p>
                 </div>
                 <div className="text-right">
                   <span className="text-outline">Total spend</span>
                   <p className="numeric font-bold text-on-surface">{formatRp(member.totalSpend)}</p>
                 </div>
               </div>
+              <div className="mt-1 flex gap-2 text-[9px] text-outline">
+                {member.notifyEmail ? <span>email opt-in</span> : <span>email opt-out</span>}
+                {member.notifyWhatsapp ? <span>WA opt-in</span> : <span>WA opt-out</span>}
+              </div>
             </article>
           ))}
         </div>
       )}
+
+      <section className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <div className="panel rounded-xl p-4">
+          <h2 className="text-body-md font-bold text-on-surface">Voucher terbaru</h2>
+          {data.vouchers.length === 0 ? (
+            <p className="py-3 text-body-sm text-on-surface-variant">Belum ada voucher.</p>
+          ) : (
+            <div className="mt-2 flex flex-col divide-y divide-outline-variant/10">
+              {data.vouchers.slice(0, 12).map((voucher) => (
+                <div key={voucher.id} className="flex items-center justify-between gap-2 py-1.5 text-[11px]">
+                  <div className="min-w-0">
+                    <span className="numeric font-bold text-primary">{voucher.code}</span>
+                    <span className="ml-1.5 text-on-surface-variant">{voucher.name}</span>
+                    <p className="text-[9px] text-outline">
+                      {voucher.memberName ?? 'Semua member'} ·{' '}
+                      {voucher.usedAt ? 'sudah dipakai' : 'aktif'}
+                    </p>
+                  </div>
+                  <span className="numeric shrink-0 text-on-surface">
+                    {voucher.type === 'percent'
+                      ? `${(voucher.value / 100).toFixed(0)}%`
+                      : formatRp(voucher.value)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="panel rounded-xl p-4">
+          <h2 className="text-body-md font-bold text-on-surface">Mutasi saldo terbaru</h2>
+          {data.deposits.length === 0 ? (
+            <p className="py-3 text-body-sm text-on-surface-variant">Belum ada mutasi saldo.</p>
+          ) : (
+            <div className="mt-2 flex flex-col divide-y divide-outline-variant/10">
+              {data.deposits.slice(0, 12).map((deposit) => (
+                <div key={deposit.id} className="flex items-center justify-between gap-2 py-1.5 text-[11px]">
+                  <div className="min-w-0">
+                    <span className="text-on-surface-variant">{deposit.type}</span>
+                    <p className="text-[9px] text-outline">
+                      {formatDate(deposit.createdAt)} · {deposit.note ?? deposit.method}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      'numeric shrink-0 font-bold',
+                      deposit.amount < 0 ? 'text-error' : 'text-primary',
+                    )}
+                  >
+                    {deposit.amount > 0 ? '+' : ''}
+                    {formatRp(deposit.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
 
       <Modal
         open={memberEditor !== null}
@@ -290,6 +466,10 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
             onChange={(event) => setNote(event.target.value)}
           />
           <Switch checked={consent} onChange={setConsent} label="Consent promo & loyalty" />
+          <div className="grid grid-cols-2 gap-2">
+            <Switch checked={notifyEmail} onChange={setNotifyEmail} label="Opt-in email" />
+            <Switch checked={notifyWhatsapp} onChange={setNotifyWhatsapp} label="Opt-in WhatsApp" />
+          </div>
           <Switch checked={active} onChange={setActive} label="Member aktif" />
           <FormError message={error} />
         </div>
@@ -347,7 +527,126 @@ export function MemberManager({ data }: { data: MemberAdminData }) {
               <p className="mt-1 text-[10px] text-outline">10000 = 1×</p>
             </div>
           </div>
+          <Input
+            label="Benefit tambahan"
+            value={tierBenefits}
+            onChange={(event) => setTierBenefits(event.target.value)}
+            placeholder="Contoh: free cue rental, priority booking"
+          />
           <Switch checked={tierActive} onChange={setTierActive} label="Tier aktif" />
+          <FormError message={error} />
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(topUpMember)}
+        onClose={() => (saving ? undefined : setTopUpMember(null))}
+        title={`Top up saldo ${topUpMember?.name ?? ''}`}
+        subtitle="Saldo bisa dipakai untuk pembayaran bill. Top up cash masuk movement kas shift."
+        icon="account_balance_wallet"
+        size="sm"
+        footer={
+          <div className="flex gap-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setTopUpMember(null)} disabled={saving}>
+              Batal
+            </Button>
+            <Button variant="primary" className="flex-[2]" onClick={submitTopUp} loading={saving}>
+              Top up
+            </Button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Nominal top up</Label>
+            <div className="mt-1.5">
+              <MoneyInput value={topUpAmount} onChange={setTopUpAmount} />
+            </div>
+          </div>
+          <div>
+            <Label>Metode</Label>
+            <Select
+              className="mt-1.5"
+              value={topUpMethod}
+              onChange={(event) =>
+                setTopUpMethod(event.target.value as 'cash' | 'qris' | 'transfer' | 'edc')
+              }
+            >
+              <option value="cash">Cash</option>
+              <option value="qris">QRIS</option>
+              <option value="transfer">Transfer</option>
+              <option value="edc">EDC</option>
+            </Select>
+          </div>
+          <Input label="Catatan" value={topUpNote} onChange={(event) => setTopUpNote(event.target.value)} />
+          <FormError message={error} />
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(voucherMember)}
+        onClose={() => (saving ? undefined : setVoucherMember(null))}
+        title={`Buat voucher ${voucherMember?.name ?? ''}`}
+        subtitle="Voucher single-use, bisa dibatasi per member dan minimum spend."
+        icon="confirmation_number"
+        size="sm"
+        footer={
+          <div className="flex gap-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setVoucherMember(null)} disabled={saving}>
+              Tutup
+            </Button>
+            <Button variant="primary" className="flex-[2]" onClick={submitVoucher} loading={saving}>
+              Buat voucher
+            </Button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <Input label="Nama voucher" value={voucherName} onChange={(event) => setVoucherName(event.target.value)} />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>Tipe</Label>
+              <Select
+                className="mt-1.5"
+                value={voucherType}
+                onChange={(event) => {
+                  const next = event.target.value as 'fixed' | 'percent';
+                  setVoucherType(next);
+                  setVoucherValue(next === 'fixed' ? 50_000 : 1000);
+                }}
+              >
+                <option value="fixed">Nominal</option>
+                <option value="percent">Persentase</option>
+              </Select>
+            </div>
+            <Input
+              label={voucherType === 'fixed' ? 'Nominal (Rp)' : 'Persen (bps)'}
+              type="number"
+              min={1}
+              value={voucherValue}
+              onChange={(event) => setVoucherValue(Math.max(1, Number(event.target.value) || 1))}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              label="Min spend (Rp)"
+              type="number"
+              min={0}
+              value={voucherMinSpend}
+              onChange={(event) => setVoucherMinSpend(Math.max(0, Number(event.target.value) || 0))}
+            />
+            <Input
+              label="Berlaku sampai"
+              type="datetime-local"
+              value={voucherExpiry}
+              onChange={(event) => setVoucherExpiry(event.target.value)}
+            />
+          </div>
+          {voucherResult ? (
+            <div className="rounded-lg border border-primary/25 bg-primary/[0.06] p-3 text-body-sm">
+              Voucher dibuat: <b className="numeric text-primary">{voucherResult}</b>
+            </div>
+          ) : null}
           <FormError message={error} />
         </div>
       </Modal>

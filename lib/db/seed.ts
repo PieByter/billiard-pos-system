@@ -6,7 +6,7 @@ import {
   computeSessionAmount,
   computeSessionAmountFromSeconds,
 } from '../billing';
-import { DEMO_PASSWORD, SERVICE_RATE_BPS, TAX_RATE_BPS } from '../constants';
+import { DEFAULT_OUTLET_ID, DEMO_PASSWORD, SERVICE_RATE_BPS, TAX_RATE_BPS } from '../constants';
 import { randomToken, yymmdd } from '../ids';
 import type { AppDb } from './index';
 import * as s from './schema';
@@ -108,6 +108,45 @@ async function ensureLoyaltyDefaults(db: AppDb, demo: boolean): Promise<void> {
     ]);
   }
 
+  const [existingVoucher] = await db
+    .select({ id: s.vouchers.id })
+    .from(s.vouchers)
+    .limit(1);
+  if (!existingVoucher) {
+    const memberRows = await db.select().from(s.members);
+    if (memberRows[0]) {
+      await db.insert(s.vouchers).values([
+        {
+          code: 'VCH-DEMO50',
+          memberId: memberRows[0].id,
+          name: 'Voucher loyalitas Rp50.000',
+          type: 'fixed',
+          value: 50_000,
+          minSpend: 100_000,
+        },
+        {
+          code: 'VCH-DEMO10',
+          name: 'Voucher semua member 10%',
+          type: 'percent',
+          value: 1000,
+          minSpend: 75_000,
+        },
+      ]);
+      await db
+        .update(s.members)
+        .set({ balance: 250_000 })
+        .where(eq(s.members.id, memberRows[0].id));
+      await db.insert(s.memberDeposits).values({
+        outletId: DEFAULT_OUTLET_ID,
+        memberId: memberRows[0].id,
+        type: 'topup',
+        method: 'cash',
+        amount: 250_000,
+        note: 'Seed saldo demo',
+      });
+    }
+  }
+
   const [existingPromo] = await db
     .select({ id: s.promotions.id })
     .from(s.promotions)
@@ -134,6 +173,28 @@ async function ensureLoyaltyDefaults(db: AppDb, demo: boolean): Promise<void> {
         active: true,
       },
     ]);
+  }
+
+  const [existingAuto] = await db
+    .select({ id: s.promotions.id })
+    .from(s.promotions)
+    .where(eq(s.promotions.autoApply, true))
+    .limit(1);
+  if (!existingAuto) {
+    await db.insert(s.promotions).values({
+      code: 'HAPPYHOUR15',
+      name: 'Happy Hour 15%',
+      description: 'Otomatis aktif Senin-Jumat 14.00-17.00.',
+      type: 'percent',
+      value: 1500,
+      maxDiscount: 75_000,
+      stackable: true,
+      autoApply: true,
+      daysOfWeek: [1, 2, 3, 4, 5],
+      startMinute: 14 * 60,
+      endMinute: 17 * 60,
+      active: true,
+    });
   }
 }
 
@@ -195,12 +256,47 @@ async function ensureOpsDefaults(db: AppDb, demo: boolean): Promise<void> {
     await db.insert(s.penaltyRules).values([
       { name: 'Kerusakan cue', type: 'damage', defaultAmount: 100_000, maxAmount: 500_000 },
       { name: 'Kehilangan bola', type: 'loss', defaultAmount: 50_000, maxAmount: 100_000 },
-      { name: 'Overtime sesi', type: 'overtime', defaultAmount: 50_000, maxAmount: 250_000 },
+      {
+        name: 'Overtime sesi',
+        type: 'overtime',
+        defaultAmount: 50_000,
+        maxAmount: 250_000,
+        graceMinutes: 10,
+        ratePerHour: 50_000,
+        autoApply: true,
+      },
+      { name: 'No-show reservasi', type: 'no_show', defaultAmount: 50_000, autoApply: true },
     ]);
+  }
+
+  const [existingSupplier] = await db
+    .select({ id: s.suppliers.id })
+    .from(s.suppliers)
+    .limit(1);
+  if (!existingSupplier) {
+    await db.insert(s.suppliers).values({
+      name: 'PT Sumber Bahan Nusantara',
+      contactName: 'Rina',
+      phone: '081200009999',
+      email: 'sales@sumberbahan.example',
+      address: 'Jakarta',
+      notes: 'Supplier bahan kering & minuman. Termin 14 hari.',
+    });
   }
 }
 
 export async function seedDatabase(db: AppDb, options: SeedOptions = {}): Promise<void> {
+  await db
+    .insert(s.outlets)
+    .values({
+      id: DEFAULT_OUTLET_ID,
+      code: 'MAIN',
+      name: 'Cue & Tap Main',
+      address: 'Jl. Cue Sports No. 8, Jakarta',
+      timezone: 'Asia/Jakarta',
+    })
+    .onConflictDoNothing();
+
   const existing = await db.select({ id: s.profiles.id }).from(s.profiles).limit(1);
   if (existing.length > 0) {
     await ensureLoyaltyDefaults(db, options.demo !== false);
@@ -1304,5 +1400,6 @@ export async function seedDatabase(db: AppDb, options: SeedOptions = {}): Promis
     });
   });
 
+  await ensureLoyaltyDefaults(db, demo);
   await ensureOpsDefaults(db, demo);
 }

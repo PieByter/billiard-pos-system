@@ -53,6 +53,7 @@ export async function placeCashierOrderAction(input: {
   tableId: string;
   items: CartLine[];
   note?: string | null;
+  idempotencyKey?: string;
 }): Promise<ActionResult<PlaceOrderResult>> {
   return runAction(async () => {
     const staff = await requireStaffAction(['cashier', 'owner']);
@@ -61,13 +62,14 @@ export async function placeCashierOrderAction(input: {
         tableId: z.string().uuid(),
         items: cartSchema,
         note: z.string().max(500).optional().nullable(),
+        idempotencyKey: z.string().min(8).max(120).optional(),
       }),
       input,
     );
     const result = await placeOrder({
       actor: { type: 'staff', id: staff.id, role: staff.role as 'owner' | 'cashier' },
       tableId: data.tableId,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: data.idempotencyKey ?? crypto.randomUUID(),
       items: data.items,
       note: data.note,
     });

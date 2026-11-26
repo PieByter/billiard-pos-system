@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -9,6 +9,11 @@ import {
   payBillSplitAction,
   resetBillSplitsAction,
 } from '@/app/actions/splits';
+import {
+  createSplitQrisIntentAction,
+  getQrisIntentStatusAction,
+  simulateMockIntentPaidAction,
+} from '@/app/actions/payment-intents';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { FormError, Label, Select } from '@/components/ui/form';
@@ -34,6 +39,7 @@ type Entry = {
 type Group = { id: string; label: string };
 
 const METHODS: PayMethod[] = ['cash', 'qris', 'edc', 'transfer'];
+const MEMBER_METHODS: PayMethod[] = [...METHODS, 'balance'];
 
 export function SplitBillManager({ data }: { data: SplitBillData }) {
   const router = useRouter();
@@ -77,6 +83,16 @@ export function SplitBillManager({ data }: { data: SplitBillData }) {
   const [tendered, setTendered] = useState(0);
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  const [qrData, setQrData] = useState<{
+    intentId: string;
+    splitLabel: string;
+    amount: number;
+    qrDataUrl: string;
+    mock: boolean;
+    providerLabel: string;
+  } | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrBusy, setQrBusy] = useState(false);
 
   const locked =
     data.bill.status !== 'open' ||
@@ -174,6 +190,61 @@ export function SplitBillManager({ data }: { data: SplitBillData }) {
       return;
     }
     toast.success('Pembagian direset');
+    router.refresh();
+  }
+
+  useEffect(() => {
+    if (!qrData) return;
+    let cancelled = false;
+    const timer = window.setInterval(async () => {
+      const result = await getQrisIntentStatusAction(qrData.intentId);
+      if (cancelled || !result.ok) return;
+      if (result.data?.status === 'paid') {
+        toast.success(`Group ${qrData.splitLabel} lunas via QRIS`, {
+          description: formatRp(qrData.amount),
+        });
+        setQrData(null);
+        router.refresh();
+      } else if (result.data?.status === 'expired') {
+        toast.error('QRIS group kedaluwarsa', { description: 'Buat QR baru.' });
+        setQrData(null);
+      }
+    }, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [qrData, router]);
+
+  async function createSplitQris(split: BillSplitView) {
+    setQrLoading(true);
+    const result = await createSplitQrisIntentAction(split.id);
+    setQrLoading(false);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    setQrData({
+      intentId: result.data!.intentId,
+      splitLabel: result.data!.splitLabel,
+      amount: result.data!.amount,
+      qrDataUrl: result.data!.qrDataUrl,
+      mock: result.data!.mock,
+      providerLabel: result.data!.providerLabel,
+    });
+  }
+
+  async function simulatePaid() {
+    if (!qrData) return;
+    setQrBusy(true);
+    const result = await simulateMockIntentPaidAction(qrData.intentId);
+    setQrBusy(false);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success('Pembayaran QRIS group disimulasikan');
+    setQrData(null);
     router.refresh();
   }
 
@@ -436,21 +507,33 @@ export function SplitBillManager({ data }: { data: SplitBillData }) {
                       <span className="numeric font-bold">{formatRp(split.paidAmount)}</span>
                     </div>
                   ) : (
-                    <Button
-                      variant="primary"
-                      size="md"
-                      className="w-full"
-                      onClick={() => {
-                        setPaySplit(split);
-                        setMethod('cash');
-                        setTendered(split.total);
-                        setPayError(null);
-                      }}
-                      disabled={locked}
-                    >
-                      <Icon name="payments" className="text-[17px]" />
-                      Bayar group · {formatRp(split.total)}
-                    </Button>
+                    <div className="grid grid-cols-[1fr_auto] gap-1.5">
+                      <Button
+                        variant="primary"
+                        size="md"
+                        className="w-full"
+                        onClick={() => {
+                          setPaySplit(split);
+                          setMethod('cash');
+                          setTendered(split.total);
+                          setPayError(null);
+                        }}
+                        disabled={locked}
+                      >
+                        <Icon name="payments" className="text-[17px]" />
+                        Bayar group · {formatRp(split.total)}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="icon-sm"
+                        onClick={() => createSplitQris(split)}
+                        loading={qrLoading}
+                        disabled={locked}
+                        title="Buat QRIS gateway untuk group ini"
+                      >
+                        <Icon name="qr_code_2" className="text-[17px] text-secondary" />
+                      </Button>
+                    </div>
                   )}
                 </div>
               </section>
@@ -485,7 +568,7 @@ export function SplitBillManager({ data }: { data: SplitBillData }) {
                 value={method}
                 onChange={(event) => setMethod(event.target.value as PayMethod)}
               >
-                {METHODS.map((value) => (
+                {(data.bill.memberId ? MEMBER_METHODS : METHODS).map((value) => (
                   <option key={value} value={value}>
                     {PAY_METHOD_LABELS[value]}
                   </option>
@@ -507,6 +590,56 @@ export function SplitBillManager({ data }: { data: SplitBillData }) {
                 Konfirmasi setelah dana {PAY_METHOD_LABELS[method]} diterima.
               </div>
             )}
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(qrData)}
+        onClose={() => (qrBusy ? undefined : setQrData(null))}
+        title={qrData ? `QRIS ${qrData.splitLabel}` : 'QRIS group'}
+        subtitle={
+          qrData
+            ? `${formatRp(qrData.amount)} · ${qrData.providerLabel} · ${data.bill.number}`
+            : undefined
+        }
+        icon="qr_code_2"
+        size="sm"
+        footer={
+          qrData ? (
+            <div className="flex flex-col gap-2">
+              <div className="rounded-lg border border-secondary/20 bg-secondary/[0.05] p-2.5 text-center text-[11px] text-on-surface-variant">
+                QR berlaku 15 menit. Status dicek otomatis setiap 3 detik.
+              </div>
+              {qrData.mock ? (
+                <Button variant="secondary" onClick={simulatePaid} loading={qrBusy}>
+                  <Icon name="science" className="text-[17px]" />
+                  Simulasi pembayaran (mock)
+                </Button>
+              ) : null}
+            </div>
+          ) : null
+        }
+      >
+        {qrData ? (
+          <div className="flex flex-col items-center gap-3">
+            <div className="rounded-2xl bg-white p-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={qrData.qrDataUrl}
+                alt={`QRIS ${qrData.splitLabel}`}
+                className="h-64 w-64"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="numeric text-headline-md font-bold text-on-surface">
+                {formatRp(qrData.amount)}
+              </span>
+              {qrData.mock ? <Badge tone="paused">Mock</Badge> : null}
+            </div>
+            <p className="text-center text-[10px] text-on-surface-variant">
+              Group lain tetap bisa dibayar tunai/EDC. Bill baru lunas setelah semua group dibayar.
+            </p>
           </div>
         ) : null}
       </Modal>

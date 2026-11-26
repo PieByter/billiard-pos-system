@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { dbNow, getDb } from '@/lib/db';
 import {
   billiardSessions,
+  billSplits,
   bills,
   orders,
   payments,
@@ -16,6 +17,7 @@ import { hasBillSplits } from './splits';
 import { awardMembershipForBill } from './membership';
 import { consumePromotionForBill } from './promotions';
 import { enqueueReceiptForBill } from './notifications';
+import { enqueueBillPrintJob } from './printing';
 import { createQrisCharge, getGatewayConfig } from '@/lib/payments/gateway';
 
 export async function createBillQrisIntent(staffId: string, billId: string) {
@@ -76,6 +78,7 @@ export async function createBillQrisIntent(staffId: string, billId: string) {
     const [created] = await tx
       .insert(paymentIntents)
       .values({
+        outletId: prepared.bill.outletId,
         billId: prepared.bill.id,
         provider: charge.provider,
         providerOrderId: charge.providerOrderId,
@@ -113,6 +116,118 @@ export async function createBillQrisIntent(staffId: string, billId: string) {
     billId: prepared.bill.id,
     billNumber: prepared.bill.billNumber,
     amount: prepared.amount,
+    qrString: charge.qrString,
+    qrDataUrl,
+    expiresAt: charge.expiresAt.toISOString(),
+    provider: charge.provider,
+    providerLabel: config.label,
+    mock: charge.provider === 'mock',
+  };
+}
+
+export async function createBillSplitQrisIntent(staffId: string, splitId: string) {
+  const config = getGatewayConfig();
+  if (!config.enabled || !config.provider) {
+    throw new AppError(
+      'GATEWAY_NOT_CONFIGURED',
+      'Payment gateway belum dikonfigurasi. Gunakan QRIS manual untuk group ini.',
+    );
+  }
+
+  const db = await getDb();
+  const prepared = await db.transaction(async (tx) => {
+    const now = await dbNow(tx);
+    const [split] = await tx
+      .select()
+      .from(billSplits)
+      .where(eq(billSplits.id, splitId))
+      .limit(1);
+    if (!split) throw new AppError('SPLIT_NOT_FOUND', 'Split group tidak ditemukan.');
+    if (split.status !== 'open') throw new AppError('SPLIT_PAID', 'Split group sudah dibayar.');
+    const [bill] = await tx.select().from(bills).where(eq(bills.id, split.billId)).limit(1);
+    if (!bill || bill.status !== 'open') throw new AppError('BILL_NOT_OPEN', 'Bill sudah ditutup.');
+    const [activeSession] = await tx
+      .select({ id: billiardSessions.id })
+      .from(billiardSessions)
+      .where(and(eq(billiardSessions.billId, bill.id), ne(billiardSessions.status, 'finished')))
+      .limit(1);
+    if (activeSession) throw new AppError('ACTIVE_SESSION', 'Stop sesi billiard sebelum QRIS.');
+    const [pendingOrder] = await tx
+      .select({ total: count() })
+      .from(orders)
+      .where(and(eq(orders.billId, bill.id), eq(orders.status, 'pending')));
+    if ((pendingOrder?.total ?? 0) > 0) {
+      throw new AppError('PENDING_ORDERS', 'Selesaikan order pending sebelum QRIS.');
+    }
+    await tx
+      .update(paymentIntents)
+      .set({ status: 'cancelled', updatedAt: now })
+      .where(
+        and(
+          eq(paymentIntents.billSplitId, split.id),
+          eq(paymentIntents.status, 'pending'),
+        ),
+      );
+    return { bill, split, now };
+  });
+
+  const orderId = `CUETAP-SPLIT-${prepared.split.id.slice(0, 8)}-${Date.now()}`;
+  const charge = await createQrisCharge({
+    orderId,
+    amount: prepared.split.total,
+    description: `Split ${prepared.split.label} - ${prepared.bill.billNumber}`,
+  });
+  const qrDataUrl = await QRCode.toDataURL(charge.qrString, {
+    margin: 1,
+    width: 360,
+    color: { dark: '#0b1326', light: '#ffffff' },
+  });
+
+  const intent = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(paymentIntents)
+      .values({
+        outletId: prepared.bill.outletId,
+        billId: prepared.bill.id,
+        billSplitId: prepared.split.id,
+        provider: charge.provider,
+        providerOrderId: charge.providerOrderId,
+        providerRef: charge.providerRef,
+        amount: prepared.split.total,
+        status: 'pending',
+        qrString: charge.qrString,
+        qrUrl: charge.qrUrl,
+        expiresAt: charge.expiresAt,
+        rawPayload: charge.raw,
+        createdBy: staffId,
+        createdAt: prepared.now,
+        updatedAt: prepared.now,
+      })
+      .returning();
+    await audit(tx, {
+      staffId,
+      action: 'payment.split_qris_intent_created',
+      entityType: 'bill_split',
+      entityId: prepared.split.id,
+      detail: {
+        billNumber: prepared.bill.billNumber,
+        label: prepared.split.label,
+        provider: charge.provider,
+        amount: prepared.split.total,
+        orderId: charge.providerOrderId,
+      },
+      at: prepared.now,
+    });
+    return created;
+  });
+
+  return {
+    intentId: intent.id,
+    splitId: prepared.split.id,
+    splitLabel: prepared.split.label,
+    billId: prepared.bill.id,
+    billNumber: prepared.bill.billNumber,
+    amount: prepared.split.total,
     qrString: charge.qrString,
     qrDataUrl,
     expiresAt: charge.expiresAt.toISOString(),
@@ -169,6 +284,89 @@ export async function settleQrisIntent(
       const [bill] = await tx.select().from(bills).where(eq(bills.id, intent.billId)).limit(1);
       if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill tidak ditemukan.');
       if (bill.status !== 'open') throw new AppError('BILL_NOT_OPEN', 'Bill sudah ditutup.');
+
+      if (intent.billSplitId) {
+        const [split] = await tx
+          .select()
+          .from(billSplits)
+          .where(
+            and(eq(billSplits.id, intent.billSplitId), eq(billSplits.billId, bill.id)),
+          )
+          .limit(1);
+        if (!split) throw new AppError('SPLIT_NOT_FOUND', 'Split group tidak ditemukan.');
+        if (split.status !== 'open') throw new AppError('SPLIT_PAID', 'Split group sudah dibayar.');
+        if (split.total !== intent.amount) {
+          throw new AppError('AMOUNT_MISMATCH', 'Nominal QRIS tidak sama dengan total group.');
+        }
+        await tx.insert(payments).values({
+          outletId: bill.outletId,
+          billId: bill.id,
+          billSplitId: split.id,
+          method: 'qris',
+          amount: intent.amount,
+          externalRef: `gateway:${intent.providerOrderId}`,
+          createdAt: now,
+        });
+        await tx
+          .update(billSplits)
+          .set({ status: 'paid', paidAt: now })
+          .where(eq(billSplits.id, split.id));
+        const [unpaid] = await tx
+          .select({ total: count() })
+          .from(billSplits)
+          .where(and(eq(billSplits.billId, bill.id), ne(billSplits.status, 'paid')));
+        const billClosed = (unpaid?.total ?? 0) === 0;
+        if (billClosed) {
+          await tx
+            .update(bills)
+            .set({ status: 'paid', closedAt: now })
+            .where(and(eq(bills.id, bill.id), eq(bills.status, 'open')));
+          await tx
+            .update(venueTables)
+            .set({ needsCleaningAt: now })
+            .where(eq(venueTables.id, bill.tableId));
+          await awardMembershipForBill(tx, bill.id, null);
+          await consumePromotionForBill(tx, bill.id, null);
+          await enqueueReceiptForBill(tx, bill.id);
+          await enqueueBillPrintJob(tx, bill.id, { type: 'split' });
+        }
+        await tx
+          .update(paymentIntents)
+          .set({
+            status: 'paid',
+            paidAt: now,
+            providerRef: providerRef ?? intent.providerRef,
+            rawPayload: rawPayload ?? intent.rawPayload,
+            updatedAt: now,
+          })
+          .where(eq(paymentIntents.id, intent.id));
+        await audit(tx, {
+          staffId: null,
+          action: billClosed ? 'bill.paid_split_final_gateway' : 'bill_split.paid_gateway',
+          entityType: 'bill',
+          entityId: bill.id,
+          detail: {
+            billNumber: bill.billNumber,
+            split: split.label,
+            provider: intent.provider,
+            amount: intent.amount,
+            orderId: intent.providerOrderId,
+            billClosed,
+          },
+          at: now,
+        });
+        return {
+          duplicate: false as const,
+          billId: bill.id,
+          billNumber: bill.billNumber,
+          splitId: split.id,
+          splitLabel: split.label,
+          amount: intent.amount,
+          billClosed,
+          paidAt: now.toISOString(),
+        };
+      }
+
       if (await hasBillSplits(tx, bill.id)) {
         throw new AppError('USE_SPLIT_PAYMENT', 'Bill memakai split group.');
       }
@@ -178,6 +376,7 @@ export async function settleQrisIntent(
       }
 
       await tx.insert(payments).values({
+        outletId: bill.outletId,
         billId: bill.id,
         method: 'qris',
         amount: intent.amount,
@@ -205,6 +404,7 @@ export async function settleQrisIntent(
       await awardMembershipForBill(tx, bill.id, null);
       await consumePromotionForBill(tx, bill.id, null);
       await enqueueReceiptForBill(tx, bill.id);
+      await enqueueBillPrintJob(tx, bill.id, { type: 'receipt' });
 
       await audit(tx, {
         staffId: null,

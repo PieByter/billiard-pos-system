@@ -20,6 +20,7 @@ import {
   venueSettings,
   venueTables,
 } from '@/lib/db/schema';
+import { getActiveOutletId } from '@/lib/outlet';
 import { DEFAULT_VENUE_SETTINGS, loadVenueSettings } from '@/lib/services/settings';
 import type {
   AdminData,
@@ -45,17 +46,18 @@ import {
   startOfDayJakarta,
 } from './shared';
 
-const ALL_METHODS: PayMethod[] = ['cash', 'qris', 'transfer', 'edc'];
+const ALL_METHODS: PayMethod[] = ['cash', 'qris', 'transfer', 'edc', 'balance'];
 
 export async function getAdminData(): Promise<AdminData> {
   const db = await getDb();
   const serverNow = await dbNow(db);
+  const outletId = await getActiveOutletId();
 
   const [shiftRow] = await db
     .select({ shift: shifts, staffName: profiles.name })
     .from(shifts)
     .leftJoin(profiles, eq(shifts.staffId, profiles.id))
-    .where(eq(shifts.status, 'open'))
+    .where(and(eq(shifts.status, 'open'), eq(shifts.outletId, outletId)))
     .limit(1);
 
   const since = shiftRow?.shift.openedAt ?? startOfDayJakarta(serverNow);
@@ -83,12 +85,12 @@ export async function getAdminData(): Promise<AdminData> {
         count: sql<number>`count(*)::int`,
       })
       .from(payments)
-      .where(gte(payments.createdAt, since))
+      .where(and(gte(payments.createdAt, since), eq(payments.outletId, outletId)))
       .groupBy(payments.method),
     db
       .select({ total: sql<number>`count(distinct ${payments.billId})::int` })
       .from(payments)
-      .where(gte(payments.createdAt, since)),
+      .where(and(gte(payments.createdAt, since), eq(payments.outletId, outletId))),
     db
       .select({
         method: payments.method,
@@ -97,12 +99,14 @@ export async function getAdminData(): Promise<AdminData> {
       })
       .from(refunds)
       .innerJoin(payments, eq(refunds.paymentId, payments.id))
-      .where(gte(refunds.createdAt, since))
+      .where(and(gte(refunds.createdAt, since), eq(refunds.outletId, outletId)))
       .groupBy(payments.method, refunds.category),
     db
       .select()
       .from(cashMovements)
-      .where(gte(cashMovements.createdAt, since))
+      .where(
+        and(gte(cashMovements.createdAt, since), eq(cashMovements.outletId, outletId)),
+      )
       .orderBy(desc(cashMovements.createdAt)),
     db
       .select({
@@ -116,6 +120,7 @@ export async function getAdminData(): Promise<AdminData> {
         and(
           eq(bills.status, 'paid'),
           eq(billiardSessions.status, 'finished'),
+          eq(bills.outletId, outletId),
           sql`${bills.closedAt} >= ${since.toISOString()}`,
         ),
       ),
@@ -129,6 +134,7 @@ export async function getAdminData(): Promise<AdminData> {
       .where(
         and(
           eq(bills.status, 'paid'),
+          eq(bills.outletId, outletId),
           sql`${bills.closedAt} >= ${since.toISOString()}`,
           sql`${orders.status} <> 'cancelled'`,
         ),
@@ -139,7 +145,7 @@ export async function getAdminData(): Promise<AdminData> {
         total: sql<number>`coalesce(sum(${bills.total}),0)::int`,
       })
       .from(bills)
-      .where(eq(bills.status, 'open')),
+      .where(and(eq(bills.status, 'open'), eq(bills.outletId, outletId))),
     db
       .select({
         code: venueTables.code,
@@ -155,6 +161,7 @@ export async function getAdminData(): Promise<AdminData> {
         and(
           eq(bills.status, 'paid'),
           eq(billiardSessions.status, 'finished'),
+          eq(bills.outletId, outletId),
           sql`${bills.closedAt} >= ${since.toISOString()}`,
         ),
       )
@@ -176,8 +183,13 @@ export async function getAdminData(): Promise<AdminData> {
       .from(billiardRates)
       .leftJoin(
         venueTables,
-        and(eq(venueTables.rateId, billiardRates.id), eq(venueTables.kind, 'billiard')),
+        and(
+          eq(venueTables.rateId, billiardRates.id),
+          eq(venueTables.kind, 'billiard'),
+          eq(venueTables.outletId, outletId),
+        ),
       )
+      .where(eq(billiardRates.outletId, outletId))
       .groupBy(billiardRates.id)
       .orderBy(asc(billiardRates.sortOrder)),
     db
@@ -188,21 +200,28 @@ export async function getAdminData(): Promise<AdminData> {
       })
       .from(auditLog)
       .leftJoin(profiles, eq(auditLog.staffId, profiles.id))
+      .where(eq(auditLog.outletId, outletId))
       .orderBy(desc(auditLog.createdAt))
       .limit(15),
     db
       .select({ shift: shifts, staffName: profiles.name })
       .from(shifts)
       .leftJoin(profiles, eq(shifts.staffId, profiles.id))
-      .where(eq(shifts.status, 'closed'))
+      .where(and(eq(shifts.status, 'closed'), eq(shifts.outletId, outletId)))
       .orderBy(desc(shifts.closedAt))
       .limit(5),
-    db.select({ total: sql<number>`count(*)::int` }).from(menuItems),
-    db.select({ total: sql<number>`count(*)::int` }).from(venueTables),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(menuItems)
+      .where(eq(menuItems.outletId, outletId)),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(venueTables)
+      .where(eq(venueTables.outletId, outletId)),
     db
       .select({ total: sql<number>`count(*)::int` })
       .from(serviceRequests)
-      .where(eq(serviceRequests.status, 'open')),
+      .where(and(eq(serviceRequests.status, 'open'), eq(serviceRequests.outletId, outletId))),
   ]);
 
   const methodMap = new Map(
@@ -304,6 +323,7 @@ export async function getAdminData(): Promise<AdminData> {
 export async function getReportData(days = 7): Promise<ReportData> {
   const db = await getDb();
   const serverNow = await dbNow(db);
+  const outletId = await getActiveOutletId();
   const start = startOfDayJakarta(new Date(serverNow.getTime() - (days - 1) * 86_400_000));
 
   const paymentDay = sql<string>`to_char(${payments.createdAt} at time zone 'Asia/Jakarta','YYYY-MM-DD')`;
@@ -319,7 +339,7 @@ export async function getReportData(days = 7): Promise<ReportData> {
           transactions: sql<number>`count(distinct ${payments.billId})::int`,
         })
         .from(payments)
-        .where(gte(payments.createdAt, start))
+        .where(and(gte(payments.createdAt, start), eq(payments.outletId, outletId)))
         .groupBy(paymentDay),
       db
         .select({
@@ -330,7 +350,7 @@ export async function getReportData(days = 7): Promise<ReportData> {
         })
         .from(refunds)
         .innerJoin(payments, eq(refunds.paymentId, payments.id))
-        .where(gte(refunds.createdAt, start))
+        .where(and(gte(refunds.createdAt, start), eq(refunds.outletId, outletId)))
         .groupBy(refundDay, payments.method, refunds.category),
       db
         .select({
@@ -343,6 +363,7 @@ export async function getReportData(days = 7): Promise<ReportData> {
           and(
             eq(bills.status, 'paid'),
             eq(billiardSessions.status, 'finished'),
+            eq(bills.outletId, outletId),
             sql`${bills.closedAt} >= ${start.toISOString()}`,
           ),
         )
@@ -358,6 +379,7 @@ export async function getReportData(days = 7): Promise<ReportData> {
         .where(
           and(
             eq(bills.status, 'paid'),
+            eq(bills.outletId, outletId),
             sql`${bills.closedAt} >= ${start.toISOString()}`,
             sql`${orders.status} <> 'cancelled'`,
           ),
@@ -375,6 +397,7 @@ export async function getReportData(days = 7): Promise<ReportData> {
         .where(
           and(
             eq(bills.status, 'paid'),
+            eq(bills.outletId, outletId),
             sql`${bills.closedAt} >= ${start.toISOString()}`,
             sql`${orders.status} <> 'cancelled'`,
           ),
@@ -396,6 +419,7 @@ export async function getReportData(days = 7): Promise<ReportData> {
           and(
             eq(bills.status, 'paid'),
             eq(billiardSessions.status, 'finished'),
+            eq(bills.outletId, outletId),
             sql`${bills.closedAt} >= ${start.toISOString()}`,
           ),
         )
@@ -409,7 +433,7 @@ export async function getReportData(days = 7): Promise<ReportData> {
           count: sql<number>`count(*)::int`,
         })
         .from(payments)
-        .where(gte(payments.createdAt, start))
+        .where(and(gte(payments.createdAt, start), eq(payments.outletId, outletId)))
         .groupBy(payments.method),
     ]);
 
@@ -504,7 +528,6 @@ export async function getReportData(days = 7): Promise<ReportData> {
 export async function getShiftReport(shiftId: string): Promise<ShiftReportData | null> {
   const db = await getDb();
   const serverNow = await dbNow(db);
-  const venue = await loadVenueSettings();
   const [row] = await db
     .select({ shift: shifts, staffName: profiles.name })
     .from(shifts)
@@ -512,6 +535,9 @@ export async function getShiftReport(shiftId: string): Promise<ShiftReportData |
     .where(eq(shifts.id, shiftId))
     .limit(1);
   if (!row) return null;
+  const activeOutletId = await getActiveOutletId();
+  if (row.shift.outletId !== activeOutletId) return null;
+  const venue = await loadVenueSettings(row.shift.outletId);
 
   const end = row.shift.closedAt ?? serverNow;
   const paymentRows = await db
@@ -524,7 +550,10 @@ export async function getShiftReport(shiftId: string): Promise<ShiftReportData |
     .innerJoin(bills, eq(payments.billId, bills.id))
     .innerJoin(venueTables, eq(bills.tableId, venueTables.id))
     .where(
-      sql`${payments.createdAt} >= ${row.shift.openedAt.toISOString()} and ${payments.createdAt} <= ${end.toISOString()}`,
+      and(
+        eq(payments.outletId, row.shift.outletId),
+        sql`${payments.createdAt} >= ${row.shift.openedAt.toISOString()} and ${payments.createdAt} <= ${end.toISOString()}`,
+      ),
     )
     .orderBy(asc(payments.createdAt));
 
@@ -543,6 +572,7 @@ export async function getShiftReport(shiftId: string): Promise<ShiftReportData |
     .where(
       and(
         eq(bills.status, 'paid'),
+        eq(bills.outletId, row.shift.outletId),
         sql`${bills.closedAt} >= ${row.shift.openedAt.toISOString()}`,
         sql`${bills.closedAt} <= ${end.toISOString()}`,
       ),
@@ -561,7 +591,10 @@ export async function getShiftReport(shiftId: string): Promise<ShiftReportData |
     .innerJoin(bills, eq(refunds.billId, bills.id))
     .innerJoin(venueTables, eq(bills.tableId, venueTables.id))
     .where(
-      sql`${refunds.createdAt} >= ${row.shift.openedAt.toISOString()} and ${refunds.createdAt} <= ${end.toISOString()}`,
+      and(
+        eq(refunds.outletId, row.shift.outletId),
+        sql`${refunds.createdAt} >= ${row.shift.openedAt.toISOString()} and ${refunds.createdAt} <= ${end.toISOString()}`,
+      ),
     )
     .orderBy(asc(refunds.createdAt));
 
@@ -646,13 +679,20 @@ export async function getShiftReport(shiftId: string): Promise<ShiftReportData |
 export async function getRefundData(): Promise<RefundAdminData> {
   const db = await getDb();
   const serverNow = await dbNow(db);
+  const outletId = await getActiveOutletId();
   const start = startOfDayJakarta(new Date(serverNow.getTime() - 30 * 86_400_000));
 
   const billRows = await db
     .select({ bill: bills, tableCode: venueTables.code })
     .from(bills)
     .innerJoin(venueTables, eq(bills.tableId, venueTables.id))
-    .where(and(eq(bills.status, 'paid'), gte(bills.closedAt, start)))
+    .where(
+      and(
+        eq(bills.status, 'paid'),
+        eq(bills.outletId, outletId),
+        gte(bills.closedAt, start),
+      ),
+    )
     .orderBy(desc(bills.closedAt))
     .limit(100);
 
@@ -665,7 +705,7 @@ export async function getRefundData(): Promise<RefundAdminData> {
       .select({ refund: refunds, staffName: profiles.name })
       .from(refunds)
       .leftJoin(profiles, eq(refunds.approvedBy, profiles.id))
-      .where(inArray(refunds.billId, billIds))
+      .where(and(inArray(refunds.billId, billIds), eq(refunds.outletId, outletId)))
       .orderBy(desc(refunds.createdAt)),
   ]);
 
@@ -731,16 +771,18 @@ export async function getRefundData(): Promise<RefundAdminData> {
 
 export async function getStaffSettingsData(): Promise<StaffSettingsData> {
   const db = await getDb();
+  const outletId = await getActiveOutletId();
   const [settingsRow, staffRows] = await Promise.all([
     db
       .select({ settings: venueSettings, updatedByName: profiles.name })
       .from(venueSettings)
       .leftJoin(profiles, eq(venueSettings.updatedBy, profiles.id))
-      .where(eq(venueSettings.id, 'default'))
+      .where(eq(venueSettings.outletId, outletId))
       .limit(1),
     db
       .select()
       .from(profiles)
+      .where(eq(profiles.outletId, outletId))
       .orderBy(asc(profiles.createdAt)),
   ]);
 
@@ -754,6 +796,7 @@ export async function getStaffSettingsData(): Promise<StaffSettingsData> {
   return {
     settings: settings
       ? {
+          outletId: settings.settings.outletId,
           venueName: settings.settings.venueName,
           address: settings.settings.address,
           timezone: settings.settings.timezone,
@@ -765,6 +808,8 @@ export async function getStaffSettingsData(): Promise<StaffSettingsData> {
           updatedByName: settings.updatedByName,
         }
       : {
+          ...DEFAULT_VENUE_SETTINGS,
+          outletId,
           venueName: DEFAULT_VENUE_SETTINGS.venueName,
           address: DEFAULT_VENUE_SETTINGS.address,
           timezone: DEFAULT_VENUE_SETTINGS.timezone,
@@ -792,6 +837,7 @@ export async function getStaffSettingsData(): Promise<StaffSettingsData> {
 
 export async function getRateSchedulesAdminData(): Promise<RateSchedulesAdminData> {
   const db = await getDb();
+  const outletId = await getActiveOutletId();
   const [tableRows, rateRows, scheduleRows] = await Promise.all([
     db
       .select({
@@ -800,9 +846,19 @@ export async function getRateSchedulesAdminData(): Promise<RateSchedulesAdminDat
       })
       .from(venueTables)
       .leftJoin(billiardRates, eq(venueTables.rateId, billiardRates.id))
-      .where(and(eq(venueTables.kind, 'billiard'), eq(venueTables.active, true)))
+      .where(
+        and(
+          eq(venueTables.kind, 'billiard'),
+          eq(venueTables.active, true),
+          eq(venueTables.outletId, outletId),
+        ),
+      )
       .orderBy(asc(venueTables.sortOrder), asc(venueTables.code)),
-    db.select().from(billiardRates).orderBy(asc(billiardRates.sortOrder)),
+    db
+      .select()
+      .from(billiardRates)
+      .where(eq(billiardRates.outletId, outletId))
+      .orderBy(asc(billiardRates.sortOrder)),
     db
       .select({
         schedule: tableRateSchedules,
@@ -813,6 +869,7 @@ export async function getRateSchedulesAdminData(): Promise<RateSchedulesAdminDat
       .from(tableRateSchedules)
       .innerJoin(venueTables, eq(tableRateSchedules.tableId, venueTables.id))
       .innerJoin(billiardRates, eq(tableRateSchedules.rateId, billiardRates.id))
+      .where(eq(tableRateSchedules.outletId, outletId))
       .orderBy(
         asc(venueTables.sortOrder),
         asc(tableRateSchedules.startMinute),
@@ -847,12 +904,18 @@ export async function getRateSchedulesAdminData(): Promise<RateSchedulesAdminDat
 
 export async function getMenuAdminData(): Promise<MenuAdminData> {
   const db = await getDb();
+  const outletId = await getActiveOutletId();
   const [categoryRows, itemRows] = await Promise.all([
-    db.select().from(menuCategories).orderBy(asc(menuCategories.sortOrder)),
+    db
+      .select()
+      .from(menuCategories)
+      .where(eq(menuCategories.outletId, outletId))
+      .orderBy(asc(menuCategories.sortOrder)),
     db
       .select({ item: menuItems, categoryName: menuCategories.name })
       .from(menuItems)
       .leftJoin(menuCategories, eq(menuItems.categoryId, menuCategories.id))
+      .where(eq(menuItems.outletId, outletId))
       .orderBy(asc(menuItems.sortOrder)),
   ]);
 
@@ -871,9 +934,14 @@ export function appBaseUrl(): string {
 
 export async function getTablesAdminData(): Promise<TablesAdminData> {
   const db = await getDb();
+  const outletId = await getActiveOutletId();
   const [cashier, rateRows] = await Promise.all([
     getCashierData(),
-    db.select().from(billiardRates).orderBy(asc(billiardRates.sortOrder)),
+    db
+      .select()
+      .from(billiardRates)
+      .where(eq(billiardRates.outletId, outletId))
+      .orderBy(asc(billiardRates.sortOrder)),
   ]);
 
   const baseUrl = appBaseUrl();

@@ -5,6 +5,7 @@ import { profiles, type ProfileRole } from '@/lib/db/schema';
 import { AppError, isUniqueViolation } from '@/lib/errors';
 import { audit } from './audit';
 import { getSupabaseAdminClient } from '@/lib/supabase/admin';
+import { getActiveOutletId } from '@/lib/outlet';
 
 const ROLES = new Set<ProfileRole>(['owner', 'cashier', 'kitchen']);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -61,6 +62,7 @@ export async function saveStaff(actorId: string, input: StaffInput) {
   }
 
   const db = await getDb();
+  const outletId = await getActiveOutletId();
   try {
     return await db.transaction(async (tx) => {
       const now = await dbNow(tx);
@@ -158,6 +160,7 @@ export async function saveStaff(actorId: string, input: StaffInput) {
           .insert(profiles)
           .values({
             id: profileId,
+            outletId,
             email,
             name,
             role: input.role,

@@ -5,6 +5,7 @@ import { getBillPrintData } from '@/lib/queries/print';
 import { formatClock, formatDate, formatRp } from '@/lib/format';
 import { PAY_METHOD_LABELS } from '@/lib/constants';
 import { PrintButton } from '@/components/print/print-button';
+import { ThermalPrintButton } from '@/components/print/thermal-print-button';
 import { ReceiptDivider, ReceiptItem, ReceiptLine } from '@/components/print/receipt-parts';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,10 @@ export default async function BillPrintPage({
       <style>{`@page { size: 80mm auto; margin: 0; }`}</style>
       <div className="no-print mx-auto mb-4 flex w-[302px] items-center justify-between">
         <div className="text-[11px] font-semibold text-slate-700">Preview struk 80mm</div>
-        <PrintButton />
+        <div className="flex items-center gap-2">
+          <ThermalPrintButton billId={billId} />
+          <PrintButton />
+        </div>
       </div>
 
       <div className="mx-auto w-[302px] bg-white p-3 font-mono text-[10.5px] leading-[1.45] text-black shadow-xl print:w-[80mm] print:shadow-none">
@@ -114,6 +118,18 @@ export default async function BillPrintPage({
           <ReceiptLine
             label={`Promo ${bill.promotionCode ?? ''}`}
             value={`- ${formatRp(bill.promoDiscountAmount)}`}
+          />
+        ) : null}
+        {bill.pointsDiscountAmount > 0 ? (
+          <ReceiptLine
+            label={`Poin ${bill.pointsRedeemed}`}
+            value={`- ${formatRp(bill.pointsDiscountAmount)}`}
+          />
+        ) : null}
+        {bill.voucherDiscountAmount > 0 ? (
+          <ReceiptLine
+            label={`Voucher ${bill.voucherCode ?? ''}`}
+            value={`- ${formatRp(bill.voucherDiscountAmount)}`}
           />
         ) : null}
         {bill.penaltyAmount > 0 ? (

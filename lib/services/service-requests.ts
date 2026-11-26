@@ -40,6 +40,7 @@ export async function createServiceRequest(
     const [request] = await tx
       .insert(serviceRequests)
       .values({
+        outletId: table.outletId,
         tableId: table.id,
         type,
         status: 'open',

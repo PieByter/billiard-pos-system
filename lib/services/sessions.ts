@@ -1,6 +1,13 @@
 import { and, eq, ne } from 'drizzle-orm';
-import { getDb, dbNow } from '@/lib/db';
-import { billiardSessions, bills, orders, venueTables } from '@/lib/db/schema';
+import { getDb, dbNow, type DbTransaction } from '@/lib/db';
+import {
+  billiardSessions,
+  bills,
+  orders,
+  penalties,
+  penaltyRules,
+  venueTables,
+} from '@/lib/db/schema';
 import {
   billableElapsedSeconds,
   computeSessionAmount,
@@ -16,7 +23,15 @@ export async function startBilliardSession(
   tableId: string,
   staffId: string,
   guestName?: string | null,
+  targetMinutes?: number | null,
 ) {
+  const target =
+    targetMinutes === null || targetMinutes === undefined
+      ? null
+      : Math.round(Number(targetMinutes));
+  if (target !== null && (target < 15 || target > 720)) {
+    throw new AppError('INVALID_TARGET', 'Target durasi harus 15-720 menit.');
+  }
   const db = await getDb();
   try {
     return await db.transaction(async (tx) => {
@@ -25,6 +40,9 @@ export async function startBilliardSession(
       const row = { table: resolved.table, rate: resolved.rate };
       if (row.table.kind !== 'billiard') {
         throw new AppError('WRONG_TABLE_KIND', 'Meja ini bukan meja billiard.');
+      }
+      if (row.table.maintenanceAt) {
+        throw new AppError('TABLE_MAINTENANCE', 'Meja sedang dalam maintenance.');
       }
       if (!row.rate || !row.rate.active) {
         throw new AppError('NO_RATE', 'Meja belum punya tarif billiard aktif.');
@@ -56,10 +74,12 @@ export async function startBilliardSession(
       const [session] = await tx
         .insert(billiardSessions)
         .values({
+          outletId: bill.outletId,
           billId: bill.id,
           tableId,
           status: 'running',
           startedAt: now,
+          targetMinutes: target,
           ratePerHour: row.rate.pricePerHour,
           minMinutes: row.rate.minMinutes,
           incrementMinutes: row.rate.incrementMinutes,
@@ -84,6 +104,7 @@ export async function startBilliardSession(
           rate: row.rate.pricePerHour,
           guest: cleanGuest,
           billNumber: bill.billNumber,
+          targetMinutes: target,
         },
         at: now,
       });
@@ -196,7 +217,7 @@ export async function stopBilliardSession(tableId: string, staffId: string) {
       .limit(1);
     if (!session) throw new AppError('NO_ACTIVE_SESSION', 'Tidak ada sesi billiard aktif.');
     const [table] = await tx
-      .select({ code: venueTables.code })
+      .select({ code: venueTables.code, outletId: venueTables.outletId })
       .from(venueTables)
       .where(eq(venueTables.id, tableId))
       .limit(1);
@@ -228,6 +249,20 @@ export async function stopBilliardSession(tableId: string, staffId: string) {
       })
       .where(eq(billiardSessions.id, session.id));
 
+    const overtimePenalty = await applyOvertimePenalty(
+      tx,
+      {
+        id: session.id,
+        billId: session.billId,
+        targetMinutes: session.targetMinutes,
+        actualMinutes: billed.minutes,
+        outletId: table?.outletId ?? session.outletId,
+        tableCode: table?.code ?? '',
+      },
+      staffId,
+      now,
+    );
+
     const { bill, total } = await recalcBillTotals(tx, session.billId, now);
     await tx
       .update(venueTables)
@@ -244,6 +279,7 @@ export async function stopBilliardSession(tableId: string, staffId: string) {
         billableMinutes: billed.billableMinutes,
         amount: billed.amount,
         billNumber: bill.billNumber,
+        overtimePenalty: overtimePenalty?.amount ?? 0,
       },
       at: now,
     });
@@ -255,8 +291,87 @@ export async function stopBilliardSession(tableId: string, staffId: string) {
       amount: billed.amount,
       billableMinutes: billed.billableMinutes,
       billTotal: total,
+      overtimePenalty: overtimePenalty?.amount ?? 0,
+      overtimeMinutes: overtimePenalty?.minutes ?? 0,
     };
   });
+}
+
+async function applyOvertimePenalty(
+  tx: DbTransaction,
+  session: {
+    id: string;
+    billId: string;
+    targetMinutes: number | null;
+    actualMinutes: number;
+    outletId: string;
+    tableCode: string;
+  },
+  staffId: string,
+  now: Date,
+) {
+  if (!session.targetMinutes || session.targetMinutes <= 0) return null;
+  const [rule] = await tx
+    .select()
+    .from(penaltyRules)
+    .where(
+      and(
+        eq(penaltyRules.outletId, session.outletId),
+        eq(penaltyRules.type, 'overtime'),
+        eq(penaltyRules.active, true),
+        eq(penaltyRules.autoApply, true),
+      ),
+    )
+    .limit(1);
+  if (!rule) return null;
+  const overtimeMinutes =
+    session.actualMinutes - session.targetMinutes - Math.max(0, rule.graceMinutes);
+  if (overtimeMinutes <= 0) return null;
+  const hours = Math.ceil(overtimeMinutes / 60);
+  const raw = rule.ratePerHour ? rule.ratePerHour * hours : rule.defaultAmount;
+  const amount = Math.min(raw, rule.maxAmount ?? raw);
+  if (amount <= 0) return null;
+
+  const [created] = await tx
+    .insert(penalties)
+    .values({
+      outletId: session.outletId,
+      billId: session.billId,
+      ruleId: rule.id,
+      type: 'overtime',
+      amount,
+      reason: `Overtime ${overtimeMinutes} menit dari target ${session.targetMinutes} menit (meja ${session.tableCode})`,
+      status: 'approved',
+      approvedBy: staffId,
+      autoKey: `session:${session.id}:overtime`,
+      autoGenerated: true,
+      createdAt: now,
+    })
+    .onConflictDoNothing()
+    .returning();
+  if (!created) return null;
+  const [bill] = await tx.select().from(bills).where(eq(bills.id, session.billId)).limit(1);
+  if (bill) {
+    await tx
+      .update(bills)
+      .set({ penaltyAmount: bill.penaltyAmount + amount })
+      .where(eq(bills.id, bill.id));
+  }
+  await audit(tx, {
+    staffId,
+    action: 'bill.penalty_auto_overtime',
+    entityType: 'billiard_session',
+    entityId: session.id,
+    detail: {
+      billNumber: bill?.billNumber,
+      targetMinutes: session.targetMinutes,
+      actualMinutes: session.actualMinutes,
+      overtimeMinutes,
+      amount,
+    },
+    at: now,
+  });
+  return { amount, minutes: overtimeMinutes };
 }
 
 export async function moveBill(
@@ -351,6 +466,9 @@ export async function openCafeBill(
     if (table.kind !== 'cafe') {
       throw new AppError('WRONG_TABLE_KIND', 'Gunakan Start Sesi untuk meja billiard.');
     }
+    if (table.maintenanceAt) {
+      throw new AppError('TABLE_MAINTENANCE', 'Meja sedang dalam maintenance.');
+    }
     const now = await dbNow(tx);
     const bill = await ensureOpenBill(tx, tableId, staffId);
     const cleanGuest = guestName?.trim().slice(0, 80) || null;
@@ -382,7 +500,7 @@ export async function markTableReady(tableId: string, staffId: string) {
     if (!table) throw new AppError('TABLE_NOT_FOUND', 'Meja tidak ditemukan.');
     await tx
       .update(venueTables)
-      .set({ needsCleaningAt: null })
+      .set({ needsCleaningAt: null, maintenanceAt: null, maintenanceNote: null })
       .where(eq(venueTables.id, tableId));
     await audit(tx, {
       staffId,

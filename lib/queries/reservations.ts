@@ -1,24 +1,26 @@
 import { and, asc, eq, gte, inArray } from 'drizzle-orm';
 import { dbNow, getDb } from '@/lib/db';
 import { reservations, venueTables, waitlistEntries } from '@/lib/db/schema';
+import { getActiveOutletId } from '@/lib/outlet';
 import type { ReservationsData } from '@/lib/types';
 
 export async function getReservationsData(): Promise<ReservationsData> {
   const db = await getDb();
   const serverNow = await dbNow(db);
+  const outletId = await getActiveOutletId();
   const start = new Date(serverNow.getTime() - 7 * 86_400_000);
 
   const [tableRows, reservationRows, waitlistRows] = await Promise.all([
     db
       .select()
       .from(venueTables)
-      .where(eq(venueTables.active, true))
+      .where(and(eq(venueTables.active, true), eq(venueTables.outletId, outletId)))
       .orderBy(asc(venueTables.kind), asc(venueTables.sortOrder)),
     db
       .select({ reservation: reservations, table: venueTables })
       .from(reservations)
       .innerJoin(venueTables, eq(reservations.tableId, venueTables.id))
-      .where(gte(reservations.startAt, start))
+      .where(and(gte(reservations.startAt, start), eq(reservations.outletId, outletId)))
       .orderBy(asc(reservations.startAt))
       .limit(150),
     db
@@ -27,6 +29,7 @@ export async function getReservationsData(): Promise<ReservationsData> {
       .where(
         and(
           gte(waitlistEntries.createdAt, start),
+          eq(waitlistEntries.outletId, outletId),
           inArray(waitlistEntries.status, ['waiting', 'called', 'seated', 'cancelled', 'no_show']),
         ),
       )
