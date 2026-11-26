@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { addCashMovementAction } from '@/app/actions/cash';
 import { closeShiftAction, openShiftAction } from '@/app/actions/shifts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { FormError, Input, Label, Textarea } from '@/components/ui/form';
+import { FormError, Input, Label, Select, Textarea } from '@/components/ui/form';
 import { Icon } from '@/components/ui/icon';
 import { Modal } from '@/components/ui/modal';
 import { MoneyInput } from '@/components/ui/money-input';
@@ -23,10 +24,12 @@ function emptyDenominationCounts(): Record<number, number> {
 export function ShiftBalanceCard({
   shift,
   stats,
+  cashMovements,
   ownerName,
 }: {
   shift: AdminData['shift'];
   stats: AdminData['shiftStats'];
+  cashMovements: AdminData['cashMovements'];
   ownerName: string;
 }) {
   const router = useRouter();
@@ -39,6 +42,12 @@ export function ShiftBalanceCard({
   const [openingCash, setOpeningCash] = useState(500_000);
   const [denomOpen, setDenomOpen] = useState(false);
   const [denoms, setDenoms] = useState<Record<number, number>>(emptyDenominationCounts);
+  const [movementType, setMovementType] = useState<
+    'drop' | 'petty_cash' | 'adjustment' | 'transfer_in' | 'transfer_out'
+  >('drop');
+  const [movementAmount, setMovementAmount] = useState(0);
+  const [movementReason, setMovementReason] = useState('');
+  const [movementLoading, setMovementLoading] = useState(false);
 
   useEffect(() => {
     setActual(shift?.expectedCash ?? stats.expectedCash);
@@ -86,6 +95,27 @@ export function ShiftBalanceCard({
           }
         : undefined,
     });
+    router.refresh();
+  }
+
+  async function addMovement() {
+    if (!shift || movementAmount <= 0 || movementReason.trim().length < 3) return;
+    setMovementLoading(true);
+    setError(null);
+    const result = await addCashMovementAction({
+      shiftId: shift.id,
+      type: movementType,
+      amount: movementAmount,
+      reason: movementReason,
+    });
+    setMovementLoading(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    toast.success('Movement kas dicatat');
+    setMovementAmount(0);
+    setMovementReason('');
     router.refresh();
   }
 
@@ -183,6 +213,72 @@ export function ShiftBalanceCard({
                 = {formatRp(expected)}
               </p>
               <span className="text-[10px] text-outline">Expected cash in drawer</span>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-outline-variant/20 bg-surface-container-low p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                Movement kas
+              </span>
+              <span className="numeric text-[10px] font-semibold text-on-surface-variant">
+                Total {formatRp(stats.cashMovementTotal)}
+              </span>
+            </div>
+            {cashMovements.length > 0 ? (
+              <div className="mt-2 flex flex-col gap-1">
+                {cashMovements.slice(0, 5).map((movement) => (
+                  <div key={movement.id} className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="truncate text-on-surface-variant">
+                      {movement.type.replaceAll('_', ' ')} · {movement.reason}
+                    </span>
+                    <span
+                      className={`numeric font-semibold ${
+                        movement.amount < 0 ? 'text-error' : 'text-primary'
+                      }`}
+                    >
+                      {movement.amount < 0 ? '-' : '+'}
+                      {formatRp(Math.abs(movement.amount))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-1 text-[10px] text-outline">Belum ada drop/petty cash.</p>
+            )}
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[150px_130px_1fr_auto]">
+              <Select
+                value={movementType}
+                onChange={(event) =>
+                  setMovementType(event.target.value as typeof movementType)
+                }
+              >
+                <option value="drop">Cash drop</option>
+                <option value="petty_cash">Petty cash</option>
+                <option value="transfer_in">Transfer masuk</option>
+                <option value="transfer_out">Transfer keluar</option>
+                <option value="adjustment">Koreksi masuk</option>
+              </Select>
+              <MoneyInput
+                value={movementAmount}
+                onChange={setMovementAmount}
+                className="[&_input]:h-10 [&_input]:text-body-sm"
+              />
+              <Input
+                value={movementReason}
+                onChange={(event) => setMovementReason(event.target.value)}
+                placeholder="Alasan movement…"
+                className="h-10 text-body-sm"
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={addMovement}
+                loading={movementLoading}
+                disabled={movementAmount <= 0 || movementReason.trim().length < 3}
+              >
+                Catat
+              </Button>
             </div>
           </div>
 

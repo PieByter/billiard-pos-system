@@ -84,6 +84,7 @@ export type BillView = {
   promotionCode: string | null;
   promoDiscountAmount: number;
   totalDiscountAmount: number;
+  penaltyAmount: number;
   taxRateBps: number;
   serviceRateBps: number;
   taxAmount: number;
@@ -222,6 +223,7 @@ export type AdminData = {
     cashRevenue: number;
     nonCashRevenue: number;
     refundAmount: number;
+    cashMovementTotal: number;
     transactionCount: number;
     openBills: number;
     openBillTotal: number;
@@ -244,6 +246,7 @@ export type AdminData = {
     createdAt: string;
   }>;
   shiftHistory: ShiftView[];
+  cashMovements: CashMovementView[];
   menuCount: number;
   tableCount: number;
   openServiceRequests: number;
@@ -277,6 +280,8 @@ export type ShiftReportData = {
     reason: string;
     createdAt: string;
   }>;
+  cashMovementTotal: number;
+  cashMovements: CashMovementView[];
   bills: Array<{
     id: string;
     billNumber: string;
@@ -374,6 +379,97 @@ export type NotificationsData = {
     label: string;
   };
   stats: { pending: number; sent: number; failed: number };
+};
+
+export type MaintenanceData = {
+  serverNow: string;
+  tables: Array<{ id: string; code: string }>;
+  assets: Array<{
+    id: string;
+    code: string;
+    name: string;
+    type: 'cue' | 'table' | 'equipment';
+    status: 'active' | 'maintenance' | 'retired';
+    tableId: string | null;
+    tableCode: string | null;
+    notes: string | null;
+  }>;
+  logs: Array<{
+    id: string;
+    assetId: string;
+    assetName: string;
+    type: 'service' | 'repair' | 'retipping' | 'inspection';
+    cost: number;
+    vendor: string | null;
+    notes: string | null;
+    performedAt: string;
+    nextDueAt: string | null;
+  }>;
+};
+
+export type InventoryData = {
+  ingredients: Array<{
+    id: string;
+    name: string;
+    unit: string;
+    stockQty: number;
+    minStock: number;
+    costPerUnit: number;
+    active: boolean;
+    low: boolean;
+  }>;
+  menuItems: Array<{ id: string; name: string }>;
+  recipes: Array<{
+    id: string;
+    menuItemId: string;
+    menuName: string;
+    ingredientId: string;
+    ingredientName: string;
+    qty: number;
+    unit: string;
+  }>;
+  movements: Array<{
+    id: string;
+    ingredientId: string;
+    type: string;
+    qty: number;
+    referenceType: string | null;
+    note: string | null;
+    createdAt: string;
+  }>;
+};
+
+export type PenaltyRuleView = {
+  id: string;
+  name: string;
+  type: 'overtime' | 'no_show' | 'cancellation' | 'damage' | 'loss' | 'other';
+  defaultAmount: number;
+  maxAmount: number | null;
+  active: boolean;
+};
+
+export type PenaltyView = {
+  id: string;
+  billId: string | null;
+  billNumber: string | null;
+  type: PenaltyRuleView['type'];
+  amount: number;
+  reason: string;
+  status: 'pending' | 'approved' | 'waived' | 'cancelled';
+  createdAt: string;
+};
+
+export type PenaltyAdminData = {
+  rules: PenaltyRuleView[];
+  penalties: PenaltyView[];
+};
+
+export type CashMovementView = {
+  id: string;
+  type: 'drop' | 'petty_cash' | 'adjustment' | 'transfer_in' | 'transfer_out';
+  amount: number;
+  reason: string;
+  createdAt: string;
 };
 
 export type MemberTierView = {

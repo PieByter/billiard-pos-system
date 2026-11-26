@@ -137,10 +137,74 @@ async function ensureLoyaltyDefaults(db: AppDb, demo: boolean): Promise<void> {
   }
 }
 
+async function ensureOpsDefaults(db: AppDb, demo: boolean): Promise<void> {
+  if (!demo) return;
+
+  const [existingIngredient] = await db
+    .select({ id: s.ingredients.id })
+    .from(s.ingredients)
+    .limit(1);
+  if (!existingIngredient) {
+    const ingredientRows = await db
+      .insert(s.ingredients)
+      .values([
+        { name: 'Coffee Beans', unit: 'g', stockQty: 5000, minStock: 500, costPerUnit: 200 },
+        { name: 'Susu Segar', unit: 'ml', stockQty: 8000, minStock: 1000, costPerUnit: 18 },
+        { name: 'Chicken Wings', unit: 'pcs', stockQty: 200, minStock: 20, costPerUnit: 12000 },
+        { name: 'Beef Patty', unit: 'pcs', stockQty: 120, minStock: 12, costPerUnit: 18000 },
+        { name: 'Mineral Water', unit: 'pcs', stockQty: 240, minStock: 24, costPerUnit: 2500 },
+      ])
+      .returning();
+    const ingredientByName = new Map(ingredientRows.map((row) => [row.name, row]));
+    const menuRows = await db.select().from(s.menuItems);
+    const menuByName = new Map(menuRows.map((row) => [row.name, row]));
+    const recipeDefs: Array<[string, string, number]> = [
+      ['Americano', 'Coffee Beans', 18],
+      ['Signature Iced Latte', 'Coffee Beans', 18],
+      ['Signature Iced Latte', 'Susu Segar', 150],
+      ['Chicken Wings BBQ', 'Chicken Wings', 6],
+      ['Cue & Tap Signature Burger', 'Beef Patty', 2],
+      ['Mineral Water', 'Mineral Water', 1],
+    ];
+    const recipeValues = recipeDefs
+      .map(([menuName, ingredientName, qty]) => {
+        const menu = menuByName.get(menuName);
+        const ingredient = ingredientByName.get(ingredientName);
+        return menu && ingredient ? { menuItemId: menu.id, ingredientId: ingredient.id, qty } : null;
+      })
+      .filter((value): value is NonNullable<typeof value> => Boolean(value));
+    if (recipeValues.length) {
+      await db.insert(s.recipes).values(recipeValues).onConflictDoNothing();
+    }
+  }
+
+  const [existingAsset] = await db.select({ id: s.assets.id }).from(s.assets).limit(1);
+  if (!existingAsset) {
+    await db.insert(s.assets).values([
+      { code: 'CUE-01', name: 'Cue House 1', type: 'cue' },
+      { code: 'CUE-02', name: 'Cue House 2', type: 'cue' },
+      { code: 'KIT-01', name: 'Kit cue ball set', type: 'equipment' },
+    ]);
+  }
+
+  const [existingRule] = await db
+    .select({ id: s.penaltyRules.id })
+    .from(s.penaltyRules)
+    .limit(1);
+  if (!existingRule) {
+    await db.insert(s.penaltyRules).values([
+      { name: 'Kerusakan cue', type: 'damage', defaultAmount: 100_000, maxAmount: 500_000 },
+      { name: 'Kehilangan bola', type: 'loss', defaultAmount: 50_000, maxAmount: 100_000 },
+      { name: 'Overtime sesi', type: 'overtime', defaultAmount: 50_000, maxAmount: 250_000 },
+    ]);
+  }
+}
+
 export async function seedDatabase(db: AppDb, options: SeedOptions = {}): Promise<void> {
   const existing = await db.select({ id: s.profiles.id }).from(s.profiles).limit(1);
   if (existing.length > 0) {
     await ensureLoyaltyDefaults(db, options.demo !== false);
+    await ensureOpsDefaults(db, options.demo !== false);
     return;
   }
 
@@ -1239,4 +1303,6 @@ export async function seedDatabase(db: AppDb, options: SeedOptions = {}): Promis
       createdAt: now,
     });
   });
+
+  await ensureOpsDefaults(db, demo);
 }

@@ -6,6 +6,7 @@ import {
   billiardRates,
   billiardSessions,
   bills,
+  cashMovements,
   menuCategories,
   menuItems,
   orderItems,
@@ -63,6 +64,7 @@ export async function getAdminData(): Promise<AdminData> {
     methodRows,
     transactionRow,
     refundRows,
+    cashMovementRows,
     billiardRevenueRows,
     fnbRevenueRow,
     openBillRow,
@@ -97,6 +99,12 @@ export async function getAdminData(): Promise<AdminData> {
       .innerJoin(payments, eq(refunds.paymentId, payments.id))
       .where(gte(refunds.createdAt, since))
       .groupBy(payments.method, refunds.category),
+    db
+      .select()
+      .from(cashMovements)
+      .where(gte(cashMovements.createdAt, since))
+      .orderBy(desc(cashMovements.createdAt))
+      .limit(50),
     db
       .select({
         amount: sql<number>`coalesce(sum(${billiardSessions.amount}),0)::int`,
@@ -231,7 +239,8 @@ export async function getAdminData(): Promise<AdminData> {
   const playSeconds = billiardRevenueRows[0]?.seconds ?? 0;
   const playSessions = billiardRevenueRows[0]?.sessions ?? 0;
   const openingCash = shiftRow?.shift.openingCash ?? 0;
-  const expectedCash = openingCash + cashRevenue;
+  const cashMovementTotal = cashMovementRows.reduce((sum, row) => sum + row.amount, 0);
+  const expectedCash = openingCash + cashRevenue + cashMovementTotal;
 
   return {
     serverNow: serverNow.toISOString(),
@@ -245,6 +254,7 @@ export async function getAdminData(): Promise<AdminData> {
       cashRevenue,
       nonCashRevenue,
       refundAmount,
+      cashMovementTotal,
       transactionCount: transactionRow[0]?.total ?? 0,
       openBills: openBillRow[0]?.count ?? 0,
       openBillTotal: openBillRow[0]?.total ?? 0,
@@ -279,6 +289,13 @@ export async function getAdminData(): Promise<AdminData> {
     shiftHistory: historyRows.map((row) =>
       buildShiftView(row.shift, row.staffName ?? 'Staff'),
     ),
+    cashMovements: cashMovementRows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      amount: row.amount,
+      reason: row.reason,
+      createdAt: row.createdAt.toISOString(),
+    })),
     menuCount: menuCountRow[0]?.total ?? 0,
     tableCount: tableCountRow[0]?.total ?? 0,
     openServiceRequests: serviceCountRow[0]?.total ?? 0,
@@ -549,6 +566,13 @@ export async function getShiftReport(shiftId: string): Promise<ShiftReportData |
     )
     .orderBy(asc(refunds.createdAt));
 
+  const movementRows = await db
+    .select()
+    .from(cashMovements)
+    .where(eq(cashMovements.shiftId, row.shift.id))
+    .orderBy(asc(cashMovements.createdAt));
+  const cashMovementTotal = movementRows.reduce((sum, entry) => sum + entry.amount, 0);
+
   const refundByMethod = new Map<string, number>();
   let refundTotal = 0;
   for (const entry of refundRows) {
@@ -589,7 +613,15 @@ export async function getShiftReport(shiftId: string): Promise<ShiftReportData |
     totals,
     totalRevenue,
     cashRevenue,
-    expectedCash: row.shift.openingCash + cashRevenue,
+    expectedCash: row.shift.openingCash + cashRevenue + cashMovementTotal,
+    cashMovementTotal,
+    cashMovements: movementRows.map((entry) => ({
+      id: entry.id,
+      type: entry.type,
+      amount: entry.amount,
+      reason: entry.reason,
+      createdAt: entry.createdAt.toISOString(),
+    })),
     refundTotal,
     refunds: refundRows.map((entry) => ({
       id: entry.refund.id,

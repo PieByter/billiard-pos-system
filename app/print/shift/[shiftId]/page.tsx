@@ -162,6 +162,23 @@ export default async function ShiftPrintPage({
           </>
         ) : null}
 
+        {data.cashMovements.length > 0 ? (
+          <>
+            <ReceiptDivider />
+            <div className="font-bold uppercase tracking-wider">Movement kas</div>
+            {data.cashMovements.map((movement) => (
+              <div key={movement.id} className="flex justify-between py-0.5">
+                <span>
+                  {movement.type.replaceAll('_', ' ')} · {movement.reason}
+                </span>
+                <span className="font-semibold">
+                  {movement.amount < 0 ? '−' : '+'} {formatRp(Math.abs(movement.amount))}
+                </span>
+              </div>
+            ))}
+          </>
+        ) : null}
+
         <ReceiptDivider />
 
         <div className="text-[9px]">

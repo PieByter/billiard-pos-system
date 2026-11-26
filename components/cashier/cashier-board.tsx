@@ -29,6 +29,7 @@ import { DiscountDialog, PaymentDialog, VoidBillDialog } from './payment-dialogs
 import { QrisGatewayDialog } from './qris-gateway-dialog';
 import { MemberDialog } from './member-dialog';
 import { PromoDialog } from './promo-dialog';
+import { PenaltyDialog } from './penalty-dialog';
 import { TableCard } from './table-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -82,6 +83,7 @@ export function CashierBoard({
   const [qrisGatewayId, setQrisGatewayId] = useState<string | null>(null);
   const [memberId, setMemberId] = useState<string | null>(null);
   const [promoId, setPromoId] = useState<string | null>(null);
+  const [penaltyId, setPenaltyId] = useState<string | null>(null);
   const [discountId, setDiscountId] = useState<string | null>(null);
   const [voidId, setVoidId] = useState<string | null>(null);
   const [payState, setPayState] = useState<PayState | null>(null);
@@ -120,6 +122,7 @@ export function CashierBoard({
   const qrisGatewayTable = data.tables.find((table) => table.id === qrisGatewayId) ?? null;
   const memberTable = data.tables.find((table) => table.id === memberId) ?? null;
   const promoTable = data.tables.find((table) => table.id === promoId) ?? null;
+  const penaltyTable = data.tables.find((table) => table.id === penaltyId) ?? null;
   const discountTable = data.tables.find((table) => table.id === discountId) ?? null;
   const voidTable = data.tables.find((table) => table.id === voidId) ?? null;
   const payTable = payState ? data.tables.find((table) => table.id === payState.tableId) ?? null : null;
@@ -323,6 +326,10 @@ export function CashierBoard({
     onPromo: () => {
       setMobileBillOpen(false);
       setPromoId(selected?.id ?? null);
+    },
+    onPenalty: () => {
+      setMobileBillOpen(false);
+      setPenaltyId(selected?.id ?? null);
     },
     onPay: (method?: PayMethod, split?: boolean) => {
       setMobileBillOpen(false);
@@ -651,6 +658,11 @@ export function CashierBoard({
         open={Boolean(promoTable)}
         table={promoTable}
         onClose={() => setPromoId(null)}
+      />
+      <PenaltyDialog
+        open={Boolean(penaltyTable)}
+        table={penaltyTable}
+        onClose={() => setPenaltyId(null)}
       />
       <QuickOpenDialog
         open={quickOpen}

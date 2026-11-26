@@ -26,6 +26,7 @@ type BillPanelProps = {
   onQrisGateway: () => void;
   onMember: () => void;
   onPromo: () => void;
+  onPenalty: () => void;
   onMove: () => void;
   onApprove: (orderId: string) => void;
   onReject: (orderId: string) => void;
@@ -409,6 +410,9 @@ function ActiveBillPanel({ table, ...props }: BillPanelProps & { table: TableVie
             value={`- ${formatRp(bill.promoDiscountAmount)}`}
           />
         ) : null}
+        {bill.penaltyAmount > 0 ? (
+          <InfoRow className="mt-1" label="Denda" value={formatRp(bill.penaltyAmount)} />
+        ) : null}
         <InfoRow
           className="mt-1"
           label={`PB1 ${(bill.taxRateBps / 100).toFixed(0)}%`}
@@ -569,6 +573,19 @@ function ActiveBillPanel({ table, ...props }: BillPanelProps & { table: TableVie
               className="rounded px-2 py-1 text-[10px] font-semibold text-secondary transition-colors hover:bg-secondary/10 disabled:opacity-50"
             >
               Diskon
+            </button>
+            <button
+              type="button"
+              onClick={props.onPenalty}
+              disabled={props.busy || Boolean(session) || pendingOrders.length > 0}
+              title={
+                session
+                  ? 'Stop sesi billiard sebelum denda'
+                  : 'Tambahkan denda kerusakan/kehilangan'
+              }
+              className="rounded px-2 py-1 text-[10px] font-semibold text-tertiary transition-colors hover:bg-tertiary/10 disabled:opacity-40"
+            >
+              Denda
             </button>
             <button
               type="button"

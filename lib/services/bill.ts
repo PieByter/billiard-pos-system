@@ -19,6 +19,7 @@ import {
   computeSessionAmountFromSeconds,
 } from '@/lib/billing';
 import { billNumber } from '@/lib/ids';
+import { restoreIngredientsForOrder } from './inventory';
 
 /** Ambil bill yang masih open, atau buat baru secara atomik. */
 export async function ensureOpenBill(
@@ -155,7 +156,7 @@ export async function recalcBillTotals(
       memberDiscountAmount,
       taxAmount: totals.taxAmount,
       serviceAmount: totals.serviceAmount,
-      total: totals.total,
+      total: totals.total + bill.penaltyAmount,
     })
     .where(eq(bills.id, billId))
     .returning();
@@ -172,6 +173,7 @@ export async function restoreOrderStock(tx: DbTransaction, orderId: string): Pro
       .set({ stock: sql`${menuItems.stock} + ${item.qty}`, updatedAt: new Date() })
       .where(and(eq(menuItems.id, item.menuItemId), sql`${menuItems.stock} is not null`));
   }
+  await restoreIngredientsForOrder(tx, orderId);
 }
 
 export function billableTotal(bill: Bill): number {

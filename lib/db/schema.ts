@@ -82,6 +82,37 @@ export const notificationStatusEnum = pgEnum('notification_status', [
   'failed',
   'skipped',
 ]);
+export const cashMovementTypeEnum = pgEnum('cash_movement_type', [
+  'drop',
+  'petty_cash',
+  'adjustment',
+  'transfer_in',
+  'transfer_out',
+]);
+export const assetTypeEnum = pgEnum('asset_type', ['cue', 'table', 'equipment']);
+export const assetStatusEnum = pgEnum('asset_status', ['active', 'maintenance', 'retired']);
+export const maintenanceTypeEnum = pgEnum('maintenance_type', [
+  'service',
+  'repair',
+  'retipping',
+  'inspection',
+]);
+export const movementTypeEnum = pgEnum('stock_movement_type', [
+  'in',
+  'out',
+  'adjust',
+  'waste',
+  'opname',
+]);
+export const penaltyTypeEnum = pgEnum('penalty_type', [
+  'overtime',
+  'no_show',
+  'cancellation',
+  'damage',
+  'loss',
+  'other',
+]);
+export const penaltyStatusEnum = pgEnum('penalty_status', ['pending', 'approved', 'waived', 'cancelled']);
 
 /* -------------------------------------------------------------------------- */
 /*                                  Profiles                                  */
@@ -227,6 +258,41 @@ export const promotions = pgTable(
   (t) => [index('promotions_active_idx').on(t.active, t.validTo)],
 ).enableRLS();
 
+export const assets = pgTable(
+  'assets',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    code: text().notNull().unique(),
+    name: text().notNull(),
+    type: assetTypeEnum().notNull().default('equipment'),
+    status: assetStatusEnum().notNull().default('active'),
+    tableId: uuid().references(() => venueTables.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    notes: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('assets_status_idx').on(t.status, t.type)],
+).enableRLS();
+
+export const maintenanceLogs = pgTable(
+  'maintenance_logs',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    assetId: uuid()
+      .notNull()
+      .references(() => assets.id, { onDelete: 'cascade' }),
+    type: maintenanceTypeEnum().notNull().default('service'),
+    performedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    cost: integer().notNull().default(0),
+    vendor: text(),
+    notes: text(),
+    nextDueAt: timestamp({ withTimezone: true }),
+    createdBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('maintenance_asset_idx').on(t.assetId, t.performedAt)],
+).enableRLS();
+
 /* -------------------------------------------------------------------------- */
 /*                                   Bills                                    */
 /* -------------------------------------------------------------------------- */
@@ -253,6 +319,7 @@ export const bills = pgTable(
     promotionCode: text(),
     promoDiscountAmount: integer().notNull().default(0),
     promotionConsumedAt: timestamp({ withTimezone: true }),
+    penaltyAmount: integer().notNull().default(0),
     taxRateBps: integer().notNull().default(1000), // 1000 bps = PB1 10%
     serviceRateBps: integer().notNull().default(500), // 5%
     taxAmount: integer().notNull().default(0),
@@ -338,6 +405,59 @@ export const menuItems = pgTable(
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('menu_items_category_idx').on(t.categoryId, t.sortOrder)],
+).enableRLS();
+
+export const ingredients = pgTable(
+  'ingredients',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    name: text().notNull(),
+    unit: text().notNull().default('pcs'),
+    stockQty: integer().notNull().default(0),
+    minStock: integer().notNull().default(0),
+    costPerUnit: integer().notNull().default(0),
+    active: boolean().notNull().default(true),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('ingredients_active_idx').on(t.active, t.name)],
+).enableRLS();
+
+export const recipes = pgTable(
+  'recipes',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    menuItemId: uuid()
+      .notNull()
+      .references(() => menuItems.id, { onDelete: 'cascade' }),
+    ingredientId: uuid()
+      .notNull()
+      .references(() => ingredients.id, { onDelete: 'restrict' }),
+    qty: integer().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('recipes_menu_ingredient_unique').on(t.menuItemId, t.ingredientId),
+    index('recipes_menu_idx').on(t.menuItemId),
+  ],
+).enableRLS();
+
+export const stockMovements = pgTable(
+  'stock_movements',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    ingredientId: uuid()
+      .notNull()
+      .references(() => ingredients.id, { onDelete: 'cascade' }),
+    type: movementTypeEnum().notNull(),
+    qty: integer().notNull(),
+    referenceType: text(),
+    referenceId: text(),
+    note: text(),
+    createdBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('stock_movements_ingredient_idx').on(t.ingredientId, t.createdAt)],
 ).enableRLS();
 
 /* -------------------------------------------------------------------------- */
@@ -575,6 +695,37 @@ export const paymentIntents = pgTable(
   ],
 ).enableRLS();
 
+export const penaltyRules = pgTable(
+  'penalty_rules',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    name: text().notNull(),
+    type: penaltyTypeEnum().notNull().default('other'),
+    defaultAmount: integer().notNull().default(0),
+    maxAmount: integer(),
+    active: boolean().notNull().default(true),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('penalty_rules_active_idx').on(t.active, t.type)],
+).enableRLS();
+
+export const penalties = pgTable(
+  'penalties',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    billId: uuid().references(() => bills.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    ruleId: uuid().references(() => penaltyRules.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    type: penaltyTypeEnum().notNull().default('other'),
+    amount: integer().notNull(),
+    reason: text().notNull(),
+    status: penaltyStatusEnum().notNull().default('approved'),
+    approvedBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    waivedReason: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('penalties_bill_idx').on(t.billId, t.status)],
+).enableRLS();
+
 export const loyaltyLedger = pgTable(
   'loyalty_ledger',
   {
@@ -660,6 +811,22 @@ export const shifts = pgTable(
 /*                          Audit log & service calls                         */
 /* -------------------------------------------------------------------------- */
 
+export const cashMovements = pgTable(
+  'cash_movements',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    shiftId: uuid()
+      .notNull()
+      .references(() => shifts.id, { onDelete: 'cascade' }),
+    type: cashMovementTypeEnum().notNull(),
+    amount: integer().notNull(),
+    reason: text().notNull(),
+    createdBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('cash_movements_shift_idx').on(t.shiftId, t.createdAt)],
+).enableRLS();
+
 export const auditLog = pgTable(
   'audit_log',
   {
@@ -718,6 +885,14 @@ export type Member = typeof members.$inferSelect;
 export type Promotion = typeof promotions.$inferSelect;
 export type LoyaltyLedgerEntry = typeof loyaltyLedger.$inferSelect;
 export type NotificationOutboxEntry = typeof notificationOutbox.$inferSelect;
+export type CashMovement = typeof cashMovements.$inferSelect;
+export type Ingredient = typeof ingredients.$inferSelect;
+export type Recipe = typeof recipes.$inferSelect;
+export type StockMovement = typeof stockMovements.$inferSelect;
+export type Asset = typeof assets.$inferSelect;
+export type MaintenanceLog = typeof maintenanceLogs.$inferSelect;
+export type PenaltyRule = typeof penaltyRules.$inferSelect;
+export type Penalty = typeof penalties.$inferSelect;
 export type Shift = typeof shifts.$inferSelect;
 export type AuditEntry = typeof auditLog.$inferSelect;
 export type ServiceRequest = typeof serviceRequests.$inferSelect;

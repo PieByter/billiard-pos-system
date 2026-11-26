@@ -134,7 +134,12 @@ export function AdminDashboard({
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-12 xl:items-start">
         <div className="xl:col-span-7">
-          <ShiftBalanceCard shift={shift} stats={stats} ownerName={ownerName} />
+          <ShiftBalanceCard
+            shift={shift}
+            stats={stats}
+            cashMovements={data.cashMovements}
+            ownerName={ownerName}
+          />
         </div>
         <div className="xl:col-span-5">
           <CompositionCard data={data} />

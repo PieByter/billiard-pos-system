@@ -17,6 +17,7 @@ import { ensureOpenBill, recalcBillTotals, restoreOrderStock } from './bill';
 import { audit } from './audit';
 import { hasBillSplits } from './splits';
 import { enqueueOrderReadyNotification } from './notifications';
+import { consumeIngredientsForOrder } from './inventory';
 
 export type OrderActor =
   | { type: 'customer' }
@@ -211,6 +212,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
           };
         }),
       );
+      await consumeIngredientsForOrder(tx, order.id);
 
       await recalcBillTotals(tx, bill.id, now);
       const orderTotal = items.reduce(

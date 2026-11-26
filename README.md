@@ -27,6 +27,9 @@ worker).
 | `/staff/admin/menu` | CRUD menu, harga, stok, station, best seller, availability |
 | `/staff/admin/tables` | CRUD meja, tarif, flag self-order, QR generation & rotasi token |
 | `/staff/admin/schedules` | Jadwal tarif peak/off-peak per meja: hari, jam, prioritas, preview tarif |
+| `/staff/admin/inventory` | Bahan, resep/BOM, stok, stock movement, low-stock |
+| `/staff/admin/maintenance` | Aset cue/meja/peralatan, log servis, biaya, jatuh tempo |
+| `/staff/admin/penalties` | Aturan denda + riwayat + waive owner |
 | `/staff/admin/members` | Member & tier: profil, poin, total spend, diskon tier otomatis |
 | `/staff/admin/promotions` | Promo code: persentase/nominal, min spend, kuota, masa berlaku, member-only |
 | `/staff/admin/notifications` | Outbox e-receipt/order-ready, status kirim, retry, provider email/WhatsApp/log |
@@ -59,6 +62,11 @@ worker).
 - **Promo engine**: kode promo persentase/nominal, min spend, kuota, masa berlaku, cakupan billiard/F&B, member-only.
 - **E-receipt/outbox**: struk digital ke member (email/WhatsApp/log), retry antrean, tanpa memblokir kasir.
 - **Customer experience**: favorit menu, reorder, ETA status, tracker lebih kaya.
+- **Inventory & BOM**: bahan, resep per menu, auto-deduct saat order, stock movement append-only.
+- **Maintenance aset**: cue/meja/peralatan, log servis, biaya, dan jatuh tempo.
+- **Kas & shift lanjutan**: cash drop, petty cash, transfer/koreksi kas, expected cash otomatis.
+- **Denda manual**: kerusakan/kehilangan/overtime, approval owner, waive dengan alasan.
+- **CI & hardening**: GitHub Actions + security headers.
 - **Audit log append-only** untuk start/stop sesi, pause, order, void, diskon, refund, staff, settings, shift, rotasi QR, dll.
 - **Role guard server-side**: owner / cashier / kitchen. Admin hanya owner; staff nonaktif langsung ditolak.
 - **PWA**: installable, cache menu yang pernah dibuka, halaman `/offline`, print browser 80mm.
@@ -299,6 +307,14 @@ const signature = createHmac('sha256', process.env.PAYMENT_WEBHOOK_SECRET)
 - Setelah promo diterapkan, order baru diblokir sampai promo dilepas (agar basis diskon tidak berubah).
 - Refund saat ini tidak membalik poin/promo; koreksi manual di masa depan.
 
+### Inventory, kas & denda
+- Resep bahan memakai satuan dasar (pcs/g/ml); stok tidak boleh negatif.
+- Order memotong stok bahan secara atomik; reject/void/full refund mengembalikan stok.
+- Stock movement append-only; koreksi manual wajib alasan.
+- Cash drop/petty cash/transfer memengaruhi expected cash shift.
+- Denda tidak dikenakan PB1/service; denda harus diterapkan sebelum pembayaran/split.
+- Waive denda hanya owner dan masuk audit log.
+
 ### Pindah meja
 - Bill, order, dan sesi aktif ikut pindah; timer tetap berjalan.
 - Meja tujuan harus kosong (tidak ada open bill/sesi aktif); partial unique index menjadi pengaman
@@ -355,6 +371,8 @@ Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi e
 - **Offline write queue.** PWA menyimpan menu read-only; order/pembayaran tetap butuh jaringan (sesuai PRD v1).
 - **ESC/POS langsung / print agent.** Cetak memakai `window.print()` 80mm; printer LAN perlu driver di komputer kasir.
 - **Cloudflare Turnstile.** Self-order sudah dilindungi status pending + rate limit 5 order/menit per meja; Turnstile bisa ditambah jika spam QR terbukti jadi masalah.
+- **Multi-outlet, offline write queue, ESC/POS.** Detail alasan dan rencana ada di **`docs/deferred.md`**.
+- **CI & hardening dasar** sudah ada; Sentry/Turnstile/audit filtering lanjutan belum.
 
 ---
 
@@ -414,6 +432,10 @@ Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi e
 - [ ] E-receipt: bill member lunas → masuk outbox; proses antrean → status sent (log/email/WA).
 - [ ] Notifikasi order ready masuk outbox saat order ready dan bill punya member berkontak.
 - [ ] Customer: tandai favorit, filter favorit, reorder dari tracker, ETA status tampil.
+- [ ] Inventory: resep menu → order memotong bahan; reject/void mengembalikan bahan; low-stock tampil.
+- [ ] Maintenance: tambah aset, log servis, biaya, dan next due tampil.
+- [ ] Kas: cash drop/petty cash mengubah expected cash; tutup shift menghitung movement.
+- [ ] Denda: tambah denda ke bill, total naik, audit tercatat; waive owner mengembalikan total.
 - [ ] Tutup shift dengan bill open (harus ditolak); setelah semua bill lunas → Z-report.
 - [ ] Webhook payment: signature salah 401, dobel 200 idempoten, nominal salah 400.
 - [ ] QR: copy link, buka incognito, rotate token → link lama 404.

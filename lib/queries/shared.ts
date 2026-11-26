@@ -141,11 +141,12 @@ export function buildBillView(
     promotionCode: bill.promotionCode,
     promoDiscountAmount: bill.promoDiscountAmount,
     totalDiscountAmount: totals.discountAmount,
+    penaltyAmount: bill.penaltyAmount,
     taxRateBps: bill.taxRateBps,
     serviceRateBps: bill.serviceRateBps,
     taxAmount: totals.taxAmount,
     serviceAmount: totals.serviceAmount,
-    total: totals.total,
+    total: totals.total + bill.penaltyAmount,
     pendingOrdersCount,
   };
 }

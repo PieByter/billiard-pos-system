@@ -195,6 +195,10 @@ export async function createBillSplits(
       taxRateBps: updatedBill.taxRateBps,
       serviceRateBps: updatedBill.serviceRateBps,
     });
+    // Denda tidak dikenakan PB1/service; bebankan ke group terakhir.
+    if (updatedBill.penaltyAmount > 0 && allocated.length > 0) {
+      allocated[allocated.length - 1].total += updatedBill.penaltyAmount;
+    }
 
     const created: Array<{ id: string; label: string; total: number }> = [];
     for (let index = 0; index < normalized.length; index += 1) {

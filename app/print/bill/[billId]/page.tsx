@@ -116,6 +116,9 @@ export default async function BillPrintPage({
             value={`- ${formatRp(bill.promoDiscountAmount)}`}
           />
         ) : null}
+        {bill.penaltyAmount > 0 ? (
+          <ReceiptLine label="Denda" value={formatRp(bill.penaltyAmount)} />
+        ) : null}
         <ReceiptLine
           label={`PB1 ${(bill.taxRateBps / 100).toFixed(0)}%`}
           value={formatRp(bill.taxAmount)}

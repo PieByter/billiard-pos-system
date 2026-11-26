@@ -368,7 +368,7 @@ Setelah keputusan di atas dipilih, scaffold repo lengkap meliputi:
 
 Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu, baru optimasi revenue, lalu kedalaman operasional, terakhir skala teknis.** Setiap item wajib mengikuti Definition of Done di §11.7.
 
-**Status implementasi:** item **#1–#10** sudah diimplementasi sebagian di v1.1 (detail parsial ada di tiap item). Sisa item (#11 ke atas) masih backlog.
+**Status implementasi:** item **#1–#13, #15 (checklist), #16 (CI), #19 (headers), #20 (denda manual)** sudah diimplementasi sebagian di v1.1. **#14 multi-outlet, #17 offline queue, #18 ESC/POS** sengaja ditunda dan dijelaskan di `docs/deferred.md`.
 
 ### 11.1 Fase 1 — Operasional harian
 
@@ -580,7 +580,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 ### 11.3 Fase 3 — Kedalaman operasional
 
 #### 11. Inventory & BOM
-**Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #2
+**Status:** selesai sebagian (v1.1; supplier/PO/HPP belum) · **Prioritas:** P2 · **Dependensi:** #2
 
 **Scope:**
 - Bahan baku, resep per menu, konversi satuan, supplier, purchase order, stock opname.
@@ -597,7 +597,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 **Dampak skema:** `ingredients`, `recipes`, `stock_movements`, `suppliers`, `purchase_orders`, `stock_counts`.
 
 #### 12. Maintenance cue & alat
-**Status:** belum dimulai · **Prioritas:** P3 · **Dependensi:** #11
+**Status:** selesai sebagian (v1.1; blokir meja maintenance belum) · **Prioritas:** P3 · **Dependensi:** #11
 
 **Scope:**
 - Inventaris cue/meja/peralatan, jadwal re-tipping, servis, dan log kerusakan.
@@ -612,7 +612,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 **Dampak skema:** `assets`, `maintenance_schedules`, `maintenance_logs`.
 
 #### 13. Kas & shift lanjutan
-**Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #1
+**Status:** selesai sebagian (v1.1; transfer antar shift/approval berjenjang belum) · **Prioritas:** P2 · **Dependensi:** #1
 
 **Scope:**
 - Cash drop, petty cash, transfer kas antar shift, koreksi kas.
@@ -629,7 +629,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 **Dampak skema:** `cash_movements`, `shift_handovers`.
 
 #### 14. Multi-outlet
-**Status:** belum dimulai · **Prioritas:** P3 · **Dependensi:** #2, arsitektur auth
+**Status:** ditunda (lihat `docs/deferred.md`) · **Prioritas:** P3 · **Dependensi:** #2, arsitektur auth
 
 **Scope:**
 - Tabel `outlets`; `outletId` di seluruh data operasional.
@@ -647,7 +647,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 ### 11.4 Fase 4 — Teknis & skala
 
 #### 15. Go-live production
-**Status:** belum dimulai · **Prioritas:** P0 sebelum operasi nyata · **Dependensi:** kredensial Supabase/Vercel
+**Status:** checklist siap, menunggu kredensial · **Prioritas:** P0 sebelum operasi nyata · **Dependensi:** kredensial Supabase/Vercel
 
 **Scope:**
 - Deploy Vercel + Supabase, env production, migration + seed katalog.
@@ -663,7 +663,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Domain final dipakai di QR.
 
 #### 16. CI/CD + E2E test
-**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #15
+**Status:** selesai sebagian (CI typecheck/test/build; E2E Playwright belum) · **Prioritas:** P1 · **Dependensi:** #15
 
 **Scope:**
 - GitHub Actions: install, typecheck, unit test, build.
@@ -677,7 +677,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Preview deployment teruji sebelum merge.
 
 #### 17. Offline write queue
-**Status:** belum dimulai · **Prioritas:** P3 · **Dependensi:** #16
+**Status:** ditunda (lihat `docs/deferred.md`) · **Prioritas:** P3 · **Dependensi:** #16
 
 **Scope:**
 - IndexedDB queue untuk order/payment saat offline.
@@ -693,7 +693,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Tidak ada payment yang “hilang” tanpa jejak.
 
 #### 18. ESC/POS langsung
-**Status:** belum dimulai · **Prioritas:** P3 · **Dependensi:** print agent lokal
+**Status:** ditunda (lihat `docs/deferred.md`) · **Prioritas:** P3 · **Dependensi:** print agent lokal
 
 **Scope:**
 - Print agent lokal (Node) atau WebUSB/Web Bluetooth.
@@ -708,7 +708,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Fallback tetap tersedia.
 
 #### 19. Hardening
-**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #15
+**Status:** selesai sebagian (v1.1; security headers + rate limit; Turnstile/Sentry belum) · **Prioritas:** P1 · **Dependensi:** #15
 
 **Scope:**
 - Turnstile pada self-order publik.
@@ -727,7 +727,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 ### 11.5 Fitur lintas fase
 
 #### 20. Denda & penalty engine
-**Status:** belum dimulai · **Prioritas:** P1 · **Dependensi:** #1 refund, #3 tarif, #4 reservasi, #12 aset (untuk denda kerusakan)
+**Status:** selesai sebagian (v1.1; denda manual + rules + waive; otomatis overtime belum) · **Prioritas:** P1 · **Dependensi:** #1 refund, #3 tarif, #4 reservasi, #12 aset
 
 **Masalah:** belum ada mekanisme denda untuk sesi yang melewati waktu, no-show/pembatalan reservasi, kerusakan meja/cue, atau kehilangan bola/aksesori. Semua masih manual dan tidak tercatat di bill/laporan.
 

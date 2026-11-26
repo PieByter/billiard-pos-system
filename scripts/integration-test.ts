@@ -45,6 +45,7 @@ async function main() {
   const { saveMember, attachMemberToBill } = await import('../lib/services/membership');
   const { applyPromotionToBill } = await import('../lib/services/promotions');
   const { processNotificationOutbox } = await import('../lib/services/notifications');
+  const { saveIngredient, saveRecipe } = await import('../lib/services/inventory');
 
   const db = await getDb();
 
@@ -79,6 +80,18 @@ async function main() {
     .limit(1);
   assert(wings && sirloin, 'menu test tersedia');
   assert(sirloin.stock === 0, 'sirloin seeded sold out');
+  const testIngredient = await saveIngredient(cashier.id, {
+    name: 'Test Ingredient',
+    unit: 'pcs',
+    stockQty: 100,
+    minStock: 5,
+    costPerUnit: 1000,
+  });
+  await saveRecipe(cashier.id, {
+    menuItemId: wings.id,
+    ingredientId: testIngredient.id,
+    qty: 2,
+  });
 
   /* ---------------------------- Shift & session ---------------------------- */
   const shift = await openShift(cashier.id, 500_000);
@@ -106,6 +119,12 @@ async function main() {
     items: [{ menuItemId: wings.id, qty: 1, note: 'Integration test' }],
   });
   assert(cashierOrder.status === 'accepted', 'order kasir langsung accepted');
+  const [ingredientAfterOrder] = await db
+    .select()
+    .from(schema.ingredients)
+    .where(eq(schema.ingredients.id, testIngredient.id))
+    .limit(1);
+  assert(ingredientAfterOrder?.stockQty === 98, 'resep memotong stok bahan atomik');
 
   let voidBlocked = false;
   try {

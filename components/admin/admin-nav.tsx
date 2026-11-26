@@ -43,6 +43,27 @@ const ADMIN_TABS = [
     roles: ['owner'] as ProfileRole[],
   },
   {
+    href: '/staff/admin/inventory',
+    label: 'Bahan & Stok',
+    short: 'Stok',
+    icon: 'inventory_2',
+    roles: ['owner'] as ProfileRole[],
+  },
+  {
+    href: '/staff/admin/maintenance',
+    label: 'Maintenance',
+    short: 'Aset',
+    icon: 'build',
+    roles: ['owner'] as ProfileRole[],
+  },
+  {
+    href: '/staff/admin/penalties',
+    label: 'Denda',
+    short: 'Denda',
+    icon: 'gavel',
+    roles: ['owner'] as ProfileRole[],
+  },
+  {
     href: '/staff/admin/members',
     label: 'Member',
     short: 'Member',

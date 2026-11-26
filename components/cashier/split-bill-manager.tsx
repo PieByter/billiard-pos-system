@@ -99,6 +99,9 @@ export function SplitBillManager({ data }: { data: SplitBillData }) {
           serviceRateBps: data.bill.serviceRateBps,
         })
       : null;
+  if (previewTotals && previewTotals.length > 0 && data.bill.penaltyAmount > 0) {
+    previewTotals[previewTotals.length - 1].total += data.bill.penaltyAmount;
+  }
   const expected = computeBillTotals({
     subtotal: data.bill.subtotal,
     discountAmount: data.bill.totalDiscountAmount,
@@ -352,7 +355,7 @@ export function SplitBillManager({ data }: { data: SplitBillData }) {
                 {unassigned > 0 ? ` · ${unassigned} belum` : ' · lengkap'}
               </span>
               <span className="numeric text-primary">
-                Total bill {formatRp(expected.total)}
+                Total bill {formatRp(expected.total + data.bill.penaltyAmount)}
               </span>
             </div>
             <FormError message={error} />

@@ -69,7 +69,12 @@ export function useLiveBillTotals(bill: BillView) {
     taxRateBps: bill.taxRateBps,
     serviceRateBps: bill.serviceRateBps,
   });
-  return { sessionSubtotal, activeSeconds: seconds, ...totals };
+  return {
+    sessionSubtotal,
+    activeSeconds: seconds,
+    ...totals,
+    total: totals.total + bill.penaltyAmount,
+  };
 }
 
 export function LiveTotalValue({ bill, className }: { bill: BillView; className?: string }) {
