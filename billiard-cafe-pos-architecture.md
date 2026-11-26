@@ -368,7 +368,7 @@ Setelah keputusan di atas dipilih, scaffold repo lengkap meliputi:
 
 Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu, baru optimasi revenue, lalu kedalaman operasional, terakhir skala teknis.** Setiap item wajib mengikuti Definition of Done di §11.7.
 
-**Status implementasi:** item **#1 (refund manual)**, **#2 (staff & venue settings)**, **#3 (jadwal tarif)**, **#4 (reservasi/waitlist)**, **#5 (split bill per item)**, dan **#6 (QRIS dinamis)** sudah diimplementasi di v1.1 (beberapa bagian masih parsial sesuai catatan item). Sisa item masih backlog.
+**Status implementasi:** item **#1 (refund manual)**, **#2 (staff & venue settings)**, **#3 (jadwal tarif)**, **#4 (reservasi/waitlist)**, **#5 (split bill per item)**, **#6 (QRIS dinamis)**, **#7 (member & loyalty)**, dan **#8 (promo engine)** sudah diimplementasi di v1.1 (beberapa bagian masih parsial sesuai catatan item). Sisa item masih backlog.
 
 ### 11.1 Fase 1 — Operasional harian
 
@@ -504,7 +504,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 **Implementasi v1.1:** `/api/webhooks/payment/gateway`, `payment_intents` + `lib/payments/gateway.ts` (mock/Midtrans/Xendit), dialog QRIS dinamis di kasir, polling status, webhook auto-settlement, env `PAYMENT_GATEWAY`. QRIS dinamis saat ini untuk bill non-split; group split masih manual. Refund gateway adapter sudah ada tetapi belum diaktifkan di UI.
 
 #### 7. Membership & loyalty
-**Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #2
+**Status:** selesai sebagian (v1.1; redeem/voucher/deposit belum) · **Prioritas:** P2 · **Dependensi:** #2
 
 **Scope:**
 - Profil member (nama, telepon/email unik, consent).
@@ -521,8 +521,10 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 
 **Dampak skema:** `members`, `member_tiers`, `loyalty_ledger`, `vouchers`, `member_deposits`.
 
+**Implementasi v1.1:** `/staff/admin/members`, MemberDialog di kasir, tier otomatis dari total spend, diskon tier di bill, poin earn idempoten lewat `loyalty_ledger`. Redeem poin, voucher, dan deposit saldo belum.
+
 #### 8. Promo engine
-**Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #7
+**Status:** selesai sebagian (v1.1; bundle/happy hour/stacking belum) · **Prioritas:** P2 · **Dependensi:** #7
 
 **Scope:**
 - Promo code, bundle, minimum spend, diskon per kategori/menu, happy hour otomatis.
@@ -537,6 +539,8 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 - Laporan memisahkan omzet kotor, diskon, dan omzet neto.
 
 **Dampak skema:** `promotions`, `promotion_rules`, `promotion_redemptions`.
+
+**Implementasi v1.1:** `/staff/admin/promotions`, PromoDialog di kasir, kode persen/nominal, min spend, max diskon, kuota, masa berlaku, cakupan all/billiard/fnb, member-only. Kuota bertambah saat bill lunas. Bundle/stacking/happy hour otomatis belum.
 
 #### 9. E-receipt & notifikasi
 **Status:** belum dimulai · **Prioritas:** P2 · **Dependensi:** #6
@@ -767,7 +771,7 @@ Dokumen ini memakai urutan prioritas operasional: **benarkan uang dan akses dulu
 2. **Sprint 2 (sebagian selesai v1.1):** #3 Tarif otomatis, #4 Reservation & waitlist; #20 Denda overtime/no-show masih pending.
 3. **Sprint 3 (sebagian selesai v1.1):** #5 Split per item/seat; #13 Kas & shift lanjutan masih pending.
 4. **Sprint 4 (sebagian selesai v1.1):** #6 Payment gateway QRIS (refund gateway belum); #9 E-receipt masih pending.
-5. **Sprint 5:** #7 Membership, #8 Promo engine.
+5. **Sprint 5 (sebagian selesai v1.1):** #7 Membership, #8 Promo engine; redeem/voucher/bundle masih pending.
 6. **Sprint 6:** #11 Inventory & BOM, #12 Maintenance, #20 Denda kerusakan/kehilangan.
 7. **Sprint 7:** #15 Go-live, #16 CI/CD, #19 Hardening (bisa paralel lebih awal).
 8. **Sprint 8:** #14 Multi-outlet, #17 Offline queue, #18 ESC/POS.

@@ -114,9 +114,11 @@ export function buildBillView(
   const ordersSubtotal = validOrders.reduce((sum, order) => sum + order.subtotal, 0);
   const pendingOrdersCount = orderViews.filter((order) => order.status === 'pending').length;
 
+  const totalDiscountAmount =
+    bill.discountAmount + bill.memberDiscountAmount + bill.promoDiscountAmount;
   const totals = computeBillTotals({
     subtotal: sessionSubtotal + ordersSubtotal,
-    discountAmount: bill.discountAmount,
+    discountAmount: totalDiscountAmount,
     taxRateBps: bill.taxRateBps,
     serviceRateBps: bill.serviceRateBps,
   });
@@ -133,7 +135,12 @@ export function buildBillView(
     sessionSubtotal,
     ordersSubtotal,
     subtotal: totals.subtotal,
-    discountAmount: totals.discountAmount,
+    discountAmount: bill.discountAmount,
+    memberId: bill.memberId,
+    memberDiscountAmount: bill.memberDiscountAmount,
+    promotionCode: bill.promotionCode,
+    promoDiscountAmount: bill.promoDiscountAmount,
+    totalDiscountAmount: totals.discountAmount,
     taxRateBps: bill.taxRateBps,
     serviceRateBps: bill.serviceRateBps,
     taxAmount: totals.taxAmount,

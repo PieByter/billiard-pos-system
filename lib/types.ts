@@ -79,6 +79,11 @@ export type BillView = {
   ordersSubtotal: number;
   subtotal: number;
   discountAmount: number;
+  memberId: string | null;
+  memberDiscountAmount: number;
+  promotionCode: string | null;
+  promoDiscountAmount: number;
+  totalDiscountAmount: number;
   taxRateBps: number;
   serviceRateBps: number;
   taxAmount: number;
@@ -336,6 +341,59 @@ export type CustomerOrderView = {
   cancelledAt: string | null;
   items: Array<{ name: string; qty: number; note: string | null; station: StationType }>;
   subtotal: number;
+};
+
+export type MemberTierView = {
+  id: string;
+  name: string;
+  minSpend: number;
+  discountBps: number;
+  pointsMultiplierBps: number;
+  active: boolean;
+  sortOrder: number;
+};
+
+export type MemberView = {
+  id: string;
+  code: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  tierId: string | null;
+  tierName: string | null;
+  points: number;
+  totalSpend: number;
+  active: boolean;
+  consent: boolean;
+  note: string | null;
+  createdAt: string;
+};
+
+export type MemberAdminData = {
+  members: MemberView[];
+  tiers: MemberTierView[];
+};
+
+export type PromotionView = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  type: 'percent' | 'fixed';
+  value: number;
+  minSpend: number;
+  maxDiscount: number | null;
+  maxUses: number | null;
+  usesCount: number;
+  validFrom: string | null;
+  validTo: string | null;
+  appliesTo: 'all' | 'billiard' | 'fnb';
+  memberOnly: boolean;
+  active: boolean;
+};
+
+export type PromotionsAdminData = {
+  promotions: PromotionView[];
 };
 
 export type BillSplitItemView = {

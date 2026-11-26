@@ -106,7 +106,16 @@ export default async function BillPrintPage({
         <ReceiptDivider />
 
         <ReceiptLine label="Subtotal" value={formatRp(bill.subtotal)} />
-        {discount > 0 ? <ReceiptLine label="Diskon" value={`- ${formatRp(discount)}`} /> : null}
+        {discount > 0 ? <ReceiptLine label="Diskon manual" value={`- ${formatRp(discount)}`} /> : null}
+        {bill.memberDiscountAmount > 0 ? (
+          <ReceiptLine label="Member tier" value={`- ${formatRp(bill.memberDiscountAmount)}`} />
+        ) : null}
+        {bill.promoDiscountAmount > 0 ? (
+          <ReceiptLine
+            label={`Promo ${bill.promotionCode ?? ''}`}
+            value={`- ${formatRp(bill.promoDiscountAmount)}`}
+          />
+        ) : null}
         <ReceiptLine
           label={`PB1 ${(bill.taxRateBps / 100).toFixed(0)}%`}
           value={formatRp(bill.taxAmount)}

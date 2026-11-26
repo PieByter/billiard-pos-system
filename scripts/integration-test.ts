@@ -42,6 +42,8 @@ async function main() {
   const { createBillQrisIntent, settleQrisIntent } = await import(
     '../lib/services/payment-intents'
   );
+  const { saveMember, attachMemberToBill } = await import('../lib/services/membership');
+  const { applyPromotionToBill } = await import('../lib/services/promotions');
 
   const db = await getDb();
 
@@ -345,6 +347,13 @@ async function main() {
   assert(gatewayTable, 'meja B6 tersedia');
   const gatewayStart = await startBilliardSession(gatewayTable.id, cashier.id, 'Gateway Guest');
   await stopBilliardSession(gatewayTable.id, cashier.id);
+  const loyaltyMember = await saveMember(cashier.id, {
+    name: 'Loyalty Test',
+    phone: '081299998888',
+  });
+  await attachMemberToBill(cashier.id, gatewayStart.billId, loyaltyMember.id);
+  const promotion = await applyPromotionToBill(cashier.id, gatewayStart.billId, 'WEEKEND10');
+  assert(promotion.discount > 0, 'promo diterapkan ke bill');
   const intent = await createBillQrisIntent(cashier.id, gatewayStart.billId);
   assert(intent.provider === 'mock', 'gateway mock dipakai di test');
   const settled = await settleQrisIntent(intent.intentId);
@@ -355,6 +364,18 @@ async function main() {
     .where(eq(schema.bills.id, gatewayStart.billId))
     .limit(1);
   assert(gatewayBill?.status === 'paid', 'bill terbayar lewat gateway');
+  const [loyaltyAfter] = await db
+    .select()
+    .from(schema.members)
+    .where(eq(schema.members.id, loyaltyMember.id))
+    .limit(1);
+  assert((loyaltyAfter?.points ?? 0) > 0, 'poin member bertambah setelah lunas');
+  const [promoAfter] = await db
+    .select()
+    .from(schema.promotions)
+    .where(eq(schema.promotions.code, 'WEEKEND10'))
+    .limit(1);
+  assert(promoAfter?.usesCount === 1, 'kuota promo bertambah setelah lunas');
 
   console.log('INTEGRATION PASS', {
     shift: shift.shiftId,

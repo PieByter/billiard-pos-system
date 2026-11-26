@@ -13,6 +13,8 @@ import { AppError, isUniqueViolation } from '@/lib/errors';
 import { audit } from './audit';
 import { recalcBillTotals } from './bill';
 import { hasBillSplits } from './splits';
+import { awardMembershipForBill } from './membership';
+import { consumePromotionForBill } from './promotions';
 import { createQrisCharge, getGatewayConfig } from '@/lib/payments/gateway';
 
 export async function createBillQrisIntent(staffId: string, billId: string) {
@@ -199,6 +201,8 @@ export async function settleQrisIntent(
         .update(venueTables)
         .set({ needsCleaningAt: now })
         .where(eq(venueTables.id, bill.tableId));
+      await awardMembershipForBill(tx, bill.id, null);
+      await consumePromotionForBill(tx, bill.id, null);
 
       await audit(tx, {
         staffId: null,

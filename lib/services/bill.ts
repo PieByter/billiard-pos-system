@@ -3,6 +3,8 @@ import type { DbTransaction } from '@/lib/db';
 import {
   bills,
   billiardSessions,
+  members,
+  memberTiers,
   menuItems,
   orderItems,
   orders,
@@ -123,9 +125,25 @@ export async function recalcBillTotals(
     }
   }
 
+  let memberDiscountAmount = 0;
+  if (bill.memberId) {
+    const [memberTier] = await tx
+      .select({ discountBps: memberTiers.discountBps })
+      .from(members)
+      .innerJoin(memberTiers, eq(members.tierId, memberTiers.id))
+      .where(and(eq(members.id, bill.memberId), eq(members.active, true)))
+      .limit(1);
+    if (memberTier) {
+      memberDiscountAmount = Math.round(
+        (Math.max(0, subtotal - bill.discountAmount) * memberTier.discountBps) / 10_000,
+      );
+    }
+  }
+
+  const totalDiscount = bill.discountAmount + memberDiscountAmount + bill.promoDiscountAmount;
   const totals = computeBillTotals({
     subtotal,
-    discountAmount: bill.discountAmount,
+    discountAmount: totalDiscount,
     taxRateBps: bill.taxRateBps,
     serviceRateBps: bill.serviceRateBps,
   });
@@ -134,6 +152,7 @@ export async function recalcBillTotals(
     .update(bills)
     .set({
       subtotal: totals.subtotal,
+      memberDiscountAmount,
       taxAmount: totals.taxAmount,
       serviceAmount: totals.serviceAmount,
       total: totals.total,

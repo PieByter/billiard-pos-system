@@ -14,6 +14,8 @@ import { AppError } from '@/lib/errors';
 import { allocateSplitTotals, computeSessionAmountFromSeconds, billableElapsedSeconds } from '@/lib/billing';
 import { audit } from './audit';
 import { recalcBillTotals } from './bill';
+import { awardMembershipForBill } from './membership';
+import { consumePromotionForBill } from './promotions';
 
 export type SplitGroupInput = {
   label: string;
@@ -185,7 +187,10 @@ export async function createBillSplits(
     });
     const allocated = allocateSplitTotals(groupSubtotals, {
       subtotal: updatedBill.subtotal,
-      discountAmount: updatedBill.discountAmount,
+      discountAmount:
+        updatedBill.discountAmount +
+        updatedBill.memberDiscountAmount +
+        updatedBill.promoDiscountAmount,
       taxRateBps: updatedBill.taxRateBps,
       serviceRateBps: updatedBill.serviceRateBps,
     });
@@ -355,6 +360,8 @@ export async function payBillSplit(
         .update(venueTables)
         .set({ needsCleaningAt: now })
         .where(eq(venueTables.id, bill.tableId));
+      await awardMembershipForBill(tx, bill.id, staffId);
+      await consumePromotionForBill(tx, bill.id, staffId);
     }
 
     const cashTendered = paymentRows.reduce(

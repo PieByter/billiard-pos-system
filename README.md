@@ -27,6 +27,8 @@ worker).
 | `/staff/admin/menu` | CRUD menu, harga, stok, station, best seller, availability |
 | `/staff/admin/tables` | CRUD meja, tarif, flag self-order, QR generation & rotasi token |
 | `/staff/admin/schedules` | Jadwal tarif peak/off-peak per meja: hari, jam, prioritas, preview tarif |
+| `/staff/admin/members` | Member & tier: profil, poin, total spend, diskon tier otomatis |
+| `/staff/admin/promotions` | Promo code: persentase/nominal, min spend, kuota, masa berlaku, member-only |
 | `/staff/admin/reports` | Omzet 7/14/30 hari, billiard vs F&B, metode bayar, top menu & meja, refund, export CSV |
 | `/staff/admin/refunds` | Refund pembayaran bill lunas (partial/full), kategori refund, restock stok, riwayat refund |
 | `/staff/admin/staff` | CRUD staff, role, aktif/nonaktif, reset akses, provisioning Supabase Auth |
@@ -52,6 +54,8 @@ worker).
 - **Reservasi & waitlist**: cek overlap, deposit tercatat, check-in membuat bill/sesi; waitlist walk-in terpisah.
 - **Split bill per item/sesi**: group pembayaran parsial; bill baru ditutup setelah semua group lunas.
 - **QRIS dinamis**: create-charge via gateway (mock/Midtrans/Xendit), QR display, polling status, webhook auto-settlement.
+- **Member & loyalty**: tier otomatis berdasarkan total spend, diskon tier di bill, poin earn saat bill lunas, ledger append-only.
+- **Promo engine**: kode promo persentase/nominal, min spend, kuota, masa berlaku, cakupan billiard/F&B, member-only.
 - **Audit log append-only** untuk start/stop sesi, pause, order, void, diskon, refund, staff, settings, shift, rotasi QR, dll.
 - **Role guard server-side**: owner / cashier / kitchen. Admin hanya owner; staff nonaktif langsung ditolak.
 - **PWA**: installable, cache menu yang pernah dibuka, halaman `/offline`, print browser 80mm.
@@ -275,6 +279,14 @@ const signature = createHmac('sha256', process.env.PAYMENT_WEBHOOK_SECRET)
 - Void/diskon hanya owner; keduanya masuk audit log append-only.
 - Webhook payment tercatat dengan `staff_id = null` dan sumber `bill.paid_webhook`.
 
+### Member & promo
+- Tier member ditentukan dari total spend; diskon tier dihitung ulang saat bill berubah.
+- Poin earn = `floor(net subtotal / Rp1.000 × multiplier tier)` dan dicatat append-only di `loyalty_ledger`.
+- Kode promo divalidasi terhadap aktif, masa berlaku, min spend, kuota, cakupan, dan member-only.
+- Kuota promo baru bertambah saat bill lunas; promo yang dilepas tidak menambah kuota.
+- Setelah promo diterapkan, order baru diblokir sampai promo dilepas (agar basis diskon tidak berubah).
+- Refund saat ini tidak membalik poin/promo; koreksi manual di masa depan.
+
 ### Pindah meja
 - Bill, order, dan sesi aktif ikut pindah; timer tetap berjalan.
 - Meja tujuan harus kosong (tidak ada open bill/sesi aktif); partial unique index menjadi pengaman
@@ -322,7 +334,7 @@ public/                         # manifest, sw.js, icons
 | Stock | Opsional per menu (`stock = null` = tak dilacak). |
 
 ### Belum termasuk v1 (roadmap)
-Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (20 item; refund manual, staff/settings, jadwal tarif, reservasi, split bill, dan QRIS dinamis sudah ada). Ringkasannya:
+Backlog lengkap + acceptance criteria ada di **`billiard-cafe-pos-architecture.md` §11** (20 item; refund manual, staff/settings, jadwal tarif, reservasi, split bill, QRIS dinamis, member, dan promo sudah ada). Ringkasannya:
 
 Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi eksternal, bukan karena terlewat:
 
@@ -384,6 +396,9 @@ Hal-hal berikut sengaja belum dibangun karena butuh keputusan produk/integrasi e
 - [ ] Split: item tidak bisa dialokasikan dua kali; total group = total bill; struk per group.
 - [ ] QRIS dinamis (mock): buat QR → simulasi bayar → bill lunas + meja cleaning.
 - [ ] QRIS gateway Midtrans/Xendit: webhook signature/callback token valid; nominal salah ditolak; duplikat idempoten.
+- [ ] Member: attach ke bill → diskon tier muncul; bayar → poin & total spend bertambah.
+- [ ] Promo: kode valid diterapkan; min spend/kuota/expired ditolak; bill lunas → kuota promo bertambah.
+- [ ] Promo member-only ditolak untuk bill tanpa member.
 - [ ] Tutup shift dengan bill open (harus ditolak); setelah semua bill lunas → Z-report.
 - [ ] Webhook payment: signature salah 401, dobel 200 idempoten, nominal salah 400.
 - [ ] QR: copy link, buka incognito, rotate token → link lama 404.

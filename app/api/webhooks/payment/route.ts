@@ -12,6 +12,8 @@ import {
 } from '@/lib/db/schema';
 import { recalcBillTotals } from '@/lib/services/bill';
 import { audit } from '@/lib/services/audit';
+import { awardMembershipForBill } from '@/lib/services/membership';
+import { consumePromotionForBill } from '@/lib/services/promotions';
 import { AppError, isUniqueViolation } from '@/lib/errors';
 
 export const dynamic = 'force-dynamic';
@@ -145,6 +147,8 @@ export async function POST(request: Request) {
         .update(venueTables)
         .set({ needsCleaningAt: now })
         .where(eq(venueTables.id, bill.tableId));
+      await awardMembershipForBill(tx, bill.id, null);
+      await consumePromotionForBill(tx, bill.id, null);
 
       await audit(tx, {
         staffId: null,

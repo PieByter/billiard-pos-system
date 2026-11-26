@@ -66,6 +66,9 @@ export const paymentIntentStatusEnum = pgEnum('payment_intent_status', [
   'failed',
   'cancelled',
 ]);
+export const promotionTypeEnum = pgEnum('promotion_type', ['percent', 'fixed']);
+export const promotionScopeEnum = pgEnum('promotion_scope', ['all', 'billiard', 'fnb']);
+export const loyaltyTypeEnum = pgEnum('loyalty_type', ['earn', 'redeem', 'adjust']);
 
 /* -------------------------------------------------------------------------- */
 /*                                  Profiles                                  */
@@ -156,6 +159,61 @@ export const tableRateSchedules = pgTable(
   ],
 ).enableRLS();
 
+export const memberTiers = pgTable('member_tiers', {
+  id: uuid().primaryKey().defaultRandom(),
+  name: text().notNull(),
+  minSpend: integer().notNull().default(0),
+  discountBps: integer().notNull().default(0),
+  pointsMultiplierBps: integer().notNull().default(10_000),
+  active: boolean().notNull().default(true),
+  sortOrder: integer().notNull().default(0),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+}).enableRLS();
+
+export const members = pgTable(
+  'members',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    code: text().notNull().unique(),
+    name: text().notNull(),
+    phone: text().notNull().unique(),
+    email: text(),
+    tierId: uuid().references(() => memberTiers.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    points: integer().notNull().default(0),
+    totalSpend: integer().notNull().default(0),
+    active: boolean().notNull().default(true),
+    consent: boolean().notNull().default(false),
+    note: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('members_phone_idx').on(t.phone), index('members_tier_idx').on(t.tierId)],
+).enableRLS();
+
+export const promotions = pgTable(
+  'promotions',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    code: text().notNull().unique(),
+    name: text().notNull(),
+    description: text(),
+    type: promotionTypeEnum().notNull(),
+    value: integer().notNull(),
+    minSpend: integer().notNull().default(0),
+    maxDiscount: integer(),
+    maxUses: integer(),
+    usesCount: integer().notNull().default(0),
+    validFrom: timestamp({ withTimezone: true }),
+    validTo: timestamp({ withTimezone: true }),
+    appliesTo: promotionScopeEnum().notNull().default('all'),
+    memberOnly: boolean().notNull().default(false),
+    active: boolean().notNull().default(true),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('promotions_active_idx').on(t.active, t.validTo)],
+).enableRLS();
+
 /* -------------------------------------------------------------------------- */
 /*                                   Bills                                    */
 /* -------------------------------------------------------------------------- */
@@ -173,6 +231,15 @@ export const bills = pgTable(
     subtotal: integer().notNull().default(0),
     discountAmount: integer().notNull().default(0),
     discountReason: text(),
+    memberId: uuid().references(() => members.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    memberDiscountAmount: integer().notNull().default(0),
+    promotionId: uuid().references(() => promotions.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    promotionCode: text(),
+    promoDiscountAmount: integer().notNull().default(0),
+    promotionConsumedAt: timestamp({ withTimezone: true }),
     taxRateBps: integer().notNull().default(1000), // 1000 bps = PB1 10%
     serviceRateBps: integer().notNull().default(500), // 5%
     taxAmount: integer().notNull().default(0),
@@ -495,6 +562,28 @@ export const paymentIntents = pgTable(
   ],
 ).enableRLS();
 
+export const loyaltyLedger = pgTable(
+  'loyalty_ledger',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    memberId: uuid()
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    billId: uuid().references(() => bills.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    type: loyaltyTypeEnum().notNull(),
+    points: integer().notNull(),
+    note: text(),
+    createdBy: uuid().references(() => profiles.id, { onDelete: 'set null', onUpdate: 'cascade' }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('loyalty_ledger_member_idx').on(t.memberId, t.createdAt),
+    uniqueIndex('loyalty_earn_bill_unique')
+      .on(t.billId)
+      .where(sql`${t.type} = 'earn'`),
+  ],
+).enableRLS();
+
 /* -------------------------------------------------------------------------- */
 /*                                   Shift                                    */
 /* -------------------------------------------------------------------------- */
@@ -580,6 +669,10 @@ export type WaitlistEntry = typeof waitlistEntries.$inferSelect;
 export type BillSplit = typeof billSplits.$inferSelect;
 export type BillSplitItem = typeof billSplitItems.$inferSelect;
 export type PaymentIntent = typeof paymentIntents.$inferSelect;
+export type MemberTier = typeof memberTiers.$inferSelect;
+export type Member = typeof members.$inferSelect;
+export type Promotion = typeof promotions.$inferSelect;
+export type LoyaltyLedgerEntry = typeof loyaltyLedger.$inferSelect;
 export type Shift = typeof shifts.$inferSelect;
 export type AuditEntry = typeof auditLog.$inferSelect;
 export type ServiceRequest = typeof serviceRequests.$inferSelect;

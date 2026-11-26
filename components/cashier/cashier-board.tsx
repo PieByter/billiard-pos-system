@@ -27,6 +27,8 @@ import {
 } from './session-dialogs';
 import { DiscountDialog, PaymentDialog, VoidBillDialog } from './payment-dialogs';
 import { QrisGatewayDialog } from './qris-gateway-dialog';
+import { MemberDialog } from './member-dialog';
+import { PromoDialog } from './promo-dialog';
 import { TableCard } from './table-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -78,6 +80,8 @@ export function CashierBoard({
   const [moveId, setMoveId] = useState<string | null>(null);
   const [qrId, setQrId] = useState<string | null>(null);
   const [qrisGatewayId, setQrisGatewayId] = useState<string | null>(null);
+  const [memberId, setMemberId] = useState<string | null>(null);
+  const [promoId, setPromoId] = useState<string | null>(null);
   const [discountId, setDiscountId] = useState<string | null>(null);
   const [voidId, setVoidId] = useState<string | null>(null);
   const [payState, setPayState] = useState<PayState | null>(null);
@@ -114,6 +118,8 @@ export function CashierBoard({
   const moveSource = data.tables.find((table) => table.id === moveId) ?? null;
   const qrTable = data.tables.find((table) => table.id === qrId) ?? null;
   const qrisGatewayTable = data.tables.find((table) => table.id === qrisGatewayId) ?? null;
+  const memberTable = data.tables.find((table) => table.id === memberId) ?? null;
+  const promoTable = data.tables.find((table) => table.id === promoId) ?? null;
   const discountTable = data.tables.find((table) => table.id === discountId) ?? null;
   const voidTable = data.tables.find((table) => table.id === voidId) ?? null;
   const payTable = payState ? data.tables.find((table) => table.id === payState.tableId) ?? null : null;
@@ -309,6 +315,14 @@ export function CashierBoard({
     onQrisGateway: () => {
       setMobileBillOpen(false);
       setQrisGatewayId(selected?.id ?? null);
+    },
+    onMember: () => {
+      setMobileBillOpen(false);
+      setMemberId(selected?.id ?? null);
+    },
+    onPromo: () => {
+      setMobileBillOpen(false);
+      setPromoId(selected?.id ?? null);
     },
     onPay: (method?: PayMethod, split?: boolean) => {
       setMobileBillOpen(false);
@@ -627,6 +641,16 @@ export function CashierBoard({
         open={Boolean(qrisGatewayTable)}
         table={qrisGatewayTable}
         onClose={() => setQrisGatewayId(null)}
+      />
+      <MemberDialog
+        open={Boolean(memberTable)}
+        table={memberTable}
+        onClose={() => setMemberId(null)}
+      />
+      <PromoDialog
+        open={Boolean(promoTable)}
+        table={promoTable}
+        onClose={() => setPromoId(null)}
       />
       <QuickOpenDialog
         open={quickOpen}

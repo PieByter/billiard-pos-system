@@ -24,6 +24,8 @@ type BillPanelProps = {
   onPay: (method?: PayMethod, split?: boolean) => void;
   onSplit: () => void;
   onQrisGateway: () => void;
+  onMember: () => void;
+  onPromo: () => void;
   onMove: () => void;
   onApprove: (orderId: string) => void;
   onReject: (orderId: string) => void;
@@ -386,11 +388,25 @@ function ActiveBillPanel({ table, ...props }: BillPanelProps & { table: TableVie
           value={formatRp(totals.sessionSubtotal)}
         />
         <InfoRow className="mt-1" label="F&B / order" value={formatRp(bill.ordersSubtotal)} />
-        {totals.discountAmount > 0 ? (
+        {bill.discountAmount > 0 ? (
           <InfoRow
             className="mt-1"
-            label={`Diskon${bill.number ? '' : ''}`}
-            value={`- ${formatRp(totals.discountAmount)}`}
+            label="Diskon manual"
+            value={`- ${formatRp(bill.discountAmount)}`}
+          />
+        ) : null}
+        {bill.memberDiscountAmount > 0 ? (
+          <InfoRow
+            className="mt-1"
+            label="Member tier"
+            value={`- ${formatRp(bill.memberDiscountAmount)}`}
+          />
+        ) : null}
+        {bill.promoDiscountAmount > 0 ? (
+          <InfoRow
+            className="mt-1"
+            label={`Promo ${bill.promotionCode ?? ''}`}
+            value={`- ${formatRp(bill.promoDiscountAmount)}`}
           />
         ) : null}
         <InfoRow
@@ -415,9 +431,9 @@ function ActiveBillPanel({ table, ...props }: BillPanelProps & { table: TableVie
             {formatRp(totals.total)}
           </span>
         </div>
-        {bill.discountAmount > 0 ? (
+        {bill.totalDiscountAmount > 0 ? (
           <p className="mt-1 text-[10px] text-on-surface-variant">
-            Diskon aktif: {formatRp(bill.discountAmount)}
+            Total diskon: {formatRp(bill.totalDiscountAmount)}
           </p>
         ) : null}
       </div>
@@ -504,6 +520,26 @@ function ActiveBillPanel({ table, ...props }: BillPanelProps & { table: TableVie
             <Icon name="qr_code_scanner" className="text-[16px] text-secondary" />
             QRIS dinamis (gateway)
           </Button>
+          <div className="grid grid-cols-2 gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={props.onMember}
+              disabled={props.busy || pendingOrders.length > 0 || Boolean(session)}
+            >
+              <Icon name="loyalty" className="text-[16px] text-tertiary" />
+              Member
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={props.onPromo}
+              disabled={props.busy || pendingOrders.length > 0 || Boolean(session)}
+            >
+              <Icon name="sell" className="text-[16px] text-secondary" />
+              Promo
+            </Button>
+          </div>
         </div>
       )}
 

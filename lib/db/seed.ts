@@ -49,9 +49,100 @@ function atTime(date: Date, hour: number, minute: number): Date {
   return copy;
 }
 
+async function ensureLoyaltyDefaults(db: AppDb, demo: boolean): Promise<void> {
+  const [existingTier] = await db
+    .select({ id: s.memberTiers.id })
+    .from(s.memberTiers)
+    .limit(1);
+  let tierRows: Array<typeof s.memberTiers.$inferSelect> = [];
+  if (!existingTier) {
+    tierRows = await db
+      .insert(s.memberTiers)
+      .values([
+        { name: 'Bronze', minSpend: 0, discountBps: 0, pointsMultiplierBps: 10_000, sortOrder: 1 },
+        {
+          name: 'Silver',
+          minSpend: 500_000,
+          discountBps: 500,
+          pointsMultiplierBps: 12_500,
+          sortOrder: 2,
+        },
+        {
+          name: 'Gold',
+          minSpend: 2_000_000,
+          discountBps: 1000,
+          pointsMultiplierBps: 15_000,
+          sortOrder: 3,
+        },
+      ])
+      .returning();
+  } else {
+    tierRows = await db.select().from(s.memberTiers);
+  }
+  if (!demo) return;
+
+  const tierByName = new Map(tierRows.map((tier) => [tier.name, tier]));
+  const [existingMember] = await db.select({ id: s.members.id }).from(s.members).limit(1);
+  if (!existingMember && tierByName.get('Gold') && tierByName.get('Silver')) {
+    await db.insert(s.members).values([
+      {
+        code: 'MBR-DEMO01',
+        name: 'Kevin Sanjaya',
+        phone: '081200001111',
+        email: 'kevin@example.com',
+        tierId: tierByName.get('Gold')!.id,
+        points: 1_250,
+        totalSpend: 3_250_000,
+        consent: true,
+      },
+      {
+        code: 'MBR-DEMO02',
+        name: 'Dewi Anggraini',
+        phone: '081200002222',
+        email: 'dewi@example.com',
+        tierId: tierByName.get('Silver')!.id,
+        points: 420,
+        totalSpend: 780_000,
+        consent: true,
+      },
+    ]);
+  }
+
+  const [existingPromo] = await db
+    .select({ id: s.promotions.id })
+    .from(s.promotions)
+    .limit(1);
+  if (!existingPromo) {
+    await db.insert(s.promotions).values([
+      {
+        code: 'WEEKEND10',
+        name: 'Weekend 10%',
+        description: 'Diskon 10% semua item, maksimal Rp50.000.',
+        type: 'percent',
+        value: 1000,
+        maxDiscount: 50_000,
+        active: true,
+      },
+      {
+        code: 'MEMBER20',
+        name: 'Member 20%',
+        description: 'Diskon member 20%, maksimal Rp100.000.',
+        type: 'percent',
+        value: 2000,
+        maxDiscount: 100_000,
+        memberOnly: true,
+        active: true,
+      },
+    ]);
+  }
+}
+
 export async function seedDatabase(db: AppDb, options: SeedOptions = {}): Promise<void> {
   const existing = await db.select({ id: s.profiles.id }).from(s.profiles).limit(1);
-  if (existing.length > 0) return;
+  if (existing.length > 0) {
+    await ensureLoyaltyDefaults(db, options.demo !== false);
+    return;
+  }
 
   const demo = options.demo !== false;
   const now = new Date();
@@ -99,6 +190,78 @@ export async function seedDatabase(db: AppDb, options: SeedOptions = {}): Promis
       receiptFooter: 'Terima kasih sudah bermain & ngopi di Cue & Tap.',
       updatedBy: owner.id,
     });
+
+    /* --------------------------- Loyalty ------------------------------- */
+    const tierRows = await tx
+      .insert(s.memberTiers)
+      .values([
+        {
+          name: 'Bronze',
+          minSpend: 0,
+          discountBps: 0,
+          pointsMultiplierBps: 10_000,
+          sortOrder: 1,
+        },
+        {
+          name: 'Silver',
+          minSpend: 500_000,
+          discountBps: 500,
+          pointsMultiplierBps: 12_500,
+          sortOrder: 2,
+        },
+        {
+          name: 'Gold',
+          minSpend: 2_000_000,
+          discountBps: 1000,
+          pointsMultiplierBps: 15_000,
+          sortOrder: 3,
+        },
+      ])
+      .returning();
+    const tierByName = new Map(tierRows.map((tier) => [tier.name, tier]));
+    await tx.insert(s.members).values([
+      {
+        code: 'MBR-DEMO01',
+        name: 'Kevin Sanjaya',
+        phone: '081200001111',
+        email: 'kevin@example.com',
+        tierId: tierByName.get('Gold')!.id,
+        points: 1_250,
+        totalSpend: 3_250_000,
+        consent: true,
+      },
+      {
+        code: 'MBR-DEMO02',
+        name: 'Dewi Anggraini',
+        phone: '081200002222',
+        email: 'dewi@example.com',
+        tierId: tierByName.get('Silver')!.id,
+        points: 420,
+        totalSpend: 780_000,
+        consent: true,
+      },
+    ]);
+    await tx.insert(s.promotions).values([
+      {
+        code: 'WEEKEND10',
+        name: 'Weekend 10%',
+        description: 'Diskon 10% semua item, maksimal Rp50.000.',
+        type: 'percent',
+        value: 1000,
+        maxDiscount: 50_000,
+        active: true,
+      },
+      {
+        code: 'MEMBER20',
+        name: 'Member 20%',
+        description: 'Diskon member 20%, maksimal Rp100.000.',
+        type: 'percent',
+        value: 2000,
+        maxDiscount: 100_000,
+        memberOnly: true,
+        active: true,
+      },
+    ]);
 
     /* ------------------------------ Rates ------------------------------ */
     const rateRows = await tx

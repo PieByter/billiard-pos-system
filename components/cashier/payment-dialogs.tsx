@@ -439,7 +439,7 @@ export function DiscountDialog({
   const projected = bill
     ? computeBillTotals({
         subtotal: bill.subtotal,
-        discountAmount: amount,
+        discountAmount: amount + bill.memberDiscountAmount + bill.promoDiscountAmount,
         taxRateBps: bill.taxRateBps,
         serviceRateBps: bill.serviceRateBps,
       })
@@ -489,11 +489,19 @@ export function DiscountDialog({
               <span className="numeric font-semibold text-on-surface">{formatRp(bill.subtotal)}</span>
             </div>
             <div className="mt-1 flex items-center justify-between text-body-sm">
-              <span className="text-on-surface-variant">Diskon saat ini</span>
+              <span className="text-on-surface-variant">Diskon manual saat ini</span>
               <span className="numeric font-semibold text-error">
                 - {formatRp(bill.discountAmount)}
               </span>
             </div>
+            {bill.memberDiscountAmount + bill.promoDiscountAmount > 0 ? (
+              <div className="mt-1 flex items-center justify-between text-body-sm">
+                <span className="text-on-surface-variant">Member + promo</span>
+                <span className="numeric font-semibold text-error">
+                  - {formatRp(bill.memberDiscountAmount + bill.promoDiscountAmount)}
+                </span>
+              </div>
+            ) : null}
             {projected ? (
               <div className="mt-2 flex items-center justify-between border-t border-outline-variant/25 pt-2">
                 <span className="text-body-sm font-semibold text-on-surface">Total setelah diskon</span>

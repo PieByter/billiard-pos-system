@@ -36,6 +36,13 @@
       "when": 1795668625988,
       "tag": "0004_sticky_silverclaw",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795669573243,
+      "tag": "0005_cool_pretty_boy",
+      "breakpoints": true
     }
   ]
 }

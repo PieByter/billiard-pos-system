@@ -174,6 +174,9 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlaceOrderResu
       if (await hasBillSplits(tx, bill.id)) {
         throw new AppError('BILL_SPLIT_LOCKED', 'Bill sudah di-split. Selesaikan pembayaran split.');
       }
+      if (bill.promotionId) {
+        throw new AppError('BILL_PROMO_LOCKED', 'Hapus promo sebelum menambah order baru.');
+      }
 
       const isCustomer = input.actor.type === 'customer';
       const [order] = await tx

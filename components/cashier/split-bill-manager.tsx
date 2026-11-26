@@ -94,14 +94,14 @@ export function SplitBillManager({ data }: { data: SplitBillData }) {
     data.splits.length === 0 && allocatedTotal === data.bill.subtotal
       ? allocateSplitTotals(groupSubtotals, {
           subtotal: data.bill.subtotal,
-          discountAmount: data.bill.discountAmount,
+          discountAmount: data.bill.totalDiscountAmount,
           taxRateBps: data.bill.taxRateBps,
           serviceRateBps: data.bill.serviceRateBps,
         })
       : null;
   const expected = computeBillTotals({
     subtotal: data.bill.subtotal,
-    discountAmount: data.bill.discountAmount,
+    discountAmount: data.bill.totalDiscountAmount,
     taxRateBps: data.bill.taxRateBps,
     serviceRateBps: data.bill.serviceRateBps,
   });
